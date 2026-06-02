@@ -29,6 +29,8 @@ export default function ExerciseScreen() {
   );
   // Для дрелей — индекс выбранного варианта
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  // Показывает, что упражнение сгенерировано LLM (а не встроенное)
+  const [usedBuiltin, setUsedBuiltin] = useState(true);
 
   const isDrill = exercise?.drillData != null;
 
@@ -59,6 +61,7 @@ export default function ExerciseScreen() {
 
       const result = await exerciseEngine.generateExercise(type, topicId, topicName, difficulty);
       setExercise(result.exercise);
+      setUsedBuiltin(result.usedBuiltin);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка генерации упражнения');
     } finally {
@@ -212,6 +215,9 @@ export default function ExerciseScreen() {
             </span>
             <span className="badge">Сложность: {exercise.difficulty}/10</span>
             {isDrill && <span className="badge bg-sage/20 text-sage">дрель</span>}
+            {!usedBuiltin && <span className="badge bg-gold/20 text-gold">LLM</span>}
+            {usedBuiltin && !isDrill && <span className="badge bg-dusk/10 text-dusk/50">офлайн</span>}
+            {usedBuiltin && isDrill && <span className="badge bg-dusk/10 text-dusk/50">шаблон</span>}
           </div>
 
           {/* Вопрос дрели (крупно) */}

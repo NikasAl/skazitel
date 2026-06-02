@@ -526,17 +526,18 @@ class ExerciseEngineClass {
   ): Promise<{ exercise: Exercise; usedBuiltin: boolean }> {
     const apiConfig = await getApiConfig();
 
-    // Сначала проверяем встроенные дрели (работают без API)
-    const drillBuiltin = BUILTIN_DRILLS.find(e => e.type === type);
-    if (drillBuiltin) {
-      return { exercise: { ...drillBuiltin, id: crypto.randomUUID(), topicId }, usedBuiltin: true };
-    }
-
-    // Если нет API — возвращаем встроенное упражнение из основных
+    // Если нет API — фоллбэк на встроенные упражнения
     if (!apiConfig) {
+      const drillBuiltin = BUILTIN_DRILLS.find(e => e.type === type);
+      if (drillBuiltin) {
+        return { exercise: { ...drillBuiltin, id: crypto.randomUUID(), topicId }, usedBuiltin: true };
+      }
       const builtin = BUILTIN_EXERCISES.find(e => e.type === type) ?? BUILTIN_EXERCISES[0];
       return { exercise: { ...builtin, id: crypto.randomUUID(), topicId }, usedBuiltin: true };
     }
+
+    // Дрели с API — генерируются через LLM ниже (фоллбэк на встроенные при ошибке)
+    // Основные упражнения тоже через LLM
 
     try {
       // Генерируем через LLM
