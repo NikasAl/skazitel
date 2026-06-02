@@ -20,7 +20,8 @@ export default function ReviewScreen() {
   const [review, setReview] = useState<ExerciseReview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  // saved track (used only to prevent double-save)
+
+  const isDrill = state?.isDrill ?? false;
 
   // Получаем review (от LLM или мгновенно для дрелей)
   useEffect(() => {
@@ -74,7 +75,7 @@ export default function ReviewScreen() {
     );
   }
 
-  // Состояние загрузки (LLM анализирует)
+  // Состояние загрузки
   if (isLoading) {
     return (
       <div className="screen-container">
@@ -86,11 +87,15 @@ export default function ReviewScreen() {
         </header>
 
         <div className="card text-center py-16">
-          <div className="text-4xl mb-4 animate-pulse">🔍</div>
-          <p className="text-dusk/70 text-lg">Анализируем твой ответ...</p>
-          <p className="text-dusk/40 text-sm mt-2">
-            ИИ-наставник проверяет ритм, рифму и образность
+          <div className="text-4xl mb-4 animate-pulse">{isDrill ? '🎯' : '🔍'}</div>
+          <p className="text-dusk/70 text-lg">
+            {isDrill ? 'Проверяем ответ...' : 'Анализируем твой ответ...'}
           </p>
+          {!isDrill && (
+            <p className="text-dusk/40 text-sm mt-2">
+              ИИ-наставник проверяет ритм, рифму и образность
+            </p>
+          )}
           <div className="mt-6">
             <div className="progress-bar">
               <div className="h-full rounded-full bg-gradient-to-r from-ember to-gold animate-pulse" style={{ width: '60%' }} />
@@ -157,6 +162,9 @@ export default function ReviewScreen() {
     );
   }
 
+  const isCorrect = review.scores.overall >= 70;
+
+  // Для обычных упражнений — метки для шкал
   const maxScore = 100;
   const scoreLabels: Record<string, string> = {
     rhythm: 'Ритм',
@@ -182,7 +190,9 @@ export default function ReviewScreen() {
       {/* XP */}
       <div className="card text-center mb-6 bg-gradient-to-br from-gold/10 to-ember/10">
         <div className="text-4xl font-bold text-gold">+{review.xpEarned} XP</div>
-        <div className="text-dusk/60 text-sm mt-1">за выполнение упражнения</div>
+        <div className="text-dusk/60 text-sm mt-1">
+          {isDrill ? 'за дрель' : 'за выполнение упражнения'}
+        </div>
         {review.levelUp && review.newLevel && (
           <div className="mt-3 text-ember font-bold">
             Повышение уровня! {LEVEL_NAMES[review.newLevel]}
@@ -198,78 +208,146 @@ export default function ReviewScreen() {
         </div>
       </div>
 
-      {/* Баллы */}
-      <div className="card mb-6">
-        <h3 className="font-medium text-ink mb-4">Оценка по навыкам</h3>
-        <div className="space-y-3">
-          {Object.entries(review.scores).map(([key, value]) => (
-            <div key={key}>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-dusk/70">{scoreLabels[key] ?? key}</span>
-                <span className="font-medium text-ink">{value}/{maxScore}</span>
-              </div>
-              <div className="progress-bar">
-                <div
-                  className={`h-full rounded-full transition-all duration-700 ${
-                    key === 'overall'
-                      ? 'bg-gradient-to-r from-ember to-gold'
-                      : value >= 70
-                        ? 'bg-sage'
-                        : value >= 40
-                          ? 'bg-gold'
-                          : 'bg-ember'
-                  }`}
-                  style={{ width: `${value}%` }}
-                />
-              </div>
+      {/* ═══ Дрель: упрощённый результат без навыков ═══ */}
+      {isDrill ? (
+        <>
+          {/* Верно / Неверно */}
+          <div className="card mb-6 text-center">
+            <div className="text-5xl mb-3">{isCorrect ? '🎯' : '😕'}</div>
+            <div className={`text-2xl font-bold ${isCorrect ? 'text-sage' : 'text-ember'}`}>
+              {isCorrect ? 'Верно!' : 'Неверно'}
             </div>
-          ))}
-        </div>
-      </div>
+            {!isCorrect && state.exercise.drillData && (
+              <div className="mt-3 text-sm text-dusk/60">
+                Правильный ответ:{' '}
+                <span className="font-bold text-ink">
+                  {state.exercise.drillData.options[state.exercise.drillData.correctIndex]}
+                </span>
+              </div>
+            )}
+          </div>
 
-      {/* Сильные стороны */}
-      {review.strengths.length > 0 && (
-        <div className="card mb-4">
-          <h3 className="font-medium text-ink mb-3">Что получилось хорошо</h3>
-          <ul className="space-y-2">
-            {review.strengths.map((s, i) => (
-              <li key={i} className="flex items-start gap-2 text-dusk/80">
-                <span className="text-sage mt-0.5">✓</span>
-                <span>{s}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+          {/* Пояснение (strengths для верного, weaknesses для неверного) */}
+          {review.strengths.length > 0 && (
+            <div className="card mb-4">
+              <h3 className="font-medium text-ink mb-3">Пояснение</h3>
+              <ul className="space-y-2">
+                {review.strengths.map((s, i) => (
+                  <li key={i} className="flex items-start gap-2 text-dusk/80">
+                    <span className="text-sage mt-0.5">✓</span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-      {/* Недочёты */}
-      {review.weaknesses.length > 0 && (
-        <div className="card mb-4">
-          <h3 className="font-medium text-ink mb-3">На что обратить внимание</h3>
-          <ul className="space-y-2">
-            {review.weaknesses.map((w, i) => (
-              <li key={i} className="flex items-start gap-2 text-dusk/80">
-                <span className="text-ember mt-0.5">!</span>
-                <span>{w}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+          {review.weaknesses.length > 0 && (
+            <div className="card mb-4">
+              <h3 className="font-medium text-ink mb-3">Разбор ошибки</h3>
+              <ul className="space-y-2">
+                {review.weaknesses.map((w, i) => (
+                  <li key={i} className="flex items-start gap-2 text-dusk/80">
+                    <span className="text-ember mt-0.5">!</span>
+                    <span>{w}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-      {/* Советы */}
-      {review.suggestions.length > 0 && (
-        <div className="card mb-8">
-          <h3 className="font-medium text-ink mb-3">Как улучшить</h3>
-          <ul className="space-y-2">
-            {review.suggestions.map((s, i) => (
-              <li key={i} className="flex items-start gap-2 text-dusk/80">
-                <span className="text-gold mt-0.5">→</span>
-                <span>{s}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+          {review.suggestions.length > 0 && (
+            <div className="card mb-8">
+              <h3 className="font-medium text-ink mb-3">Совет</h3>
+              <ul className="space-y-2">
+                {review.suggestions.map((s, i) => (
+                  <li key={i} className="flex items-start gap-2 text-dusk/80">
+                    <span className="text-gold mt-0.5">→</span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          {/* ═══ Обычное упражнение: полная оценка по навыкам ═══ */}
+
+          {/* Баллы */}
+          <div className="card mb-6">
+            <h3 className="font-medium text-ink mb-4">Оценка по навыкам</h3>
+            <div className="space-y-3">
+              {Object.entries(review.scores).map(([key, value]) => (
+                <div key={key}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-dusk/70">{scoreLabels[key] ?? key}</span>
+                    <span className="font-medium text-ink">{value}/{maxScore}</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ${
+                        key === 'overall'
+                          ? 'bg-gradient-to-r from-ember to-gold'
+                          : value >= 70
+                            ? 'bg-sage'
+                            : value >= 40
+                              ? 'bg-gold'
+                              : 'bg-ember'
+                      }`}
+                      style={{ width: `${value}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Сильные стороны */}
+          {review.strengths.length > 0 && (
+            <div className="card mb-4">
+              <h3 className="font-medium text-ink mb-3">Что получилось хорошо</h3>
+              <ul className="space-y-2">
+                {review.strengths.map((s, i) => (
+                  <li key={i} className="flex items-start gap-2 text-dusk/80">
+                    <span className="text-sage mt-0.5">✓</span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Недочёты */}
+          {review.weaknesses.length > 0 && (
+            <div className="card mb-4">
+              <h3 className="font-medium text-ink mb-3">На что обратить внимание</h3>
+              <ul className="space-y-2">
+                {review.weaknesses.map((w, i) => (
+                  <li key={i} className="flex items-start gap-2 text-dusk/80">
+                    <span className="text-ember mt-0.5">!</span>
+                    <span>{w}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Советы */}
+          {review.suggestions.length > 0 && (
+            <div className="card mb-8">
+              <h3 className="font-medium text-ink mb-3">Как улучшить</h3>
+              <ul className="space-y-2">
+                {review.suggestions.map((s, i) => (
+                  <li key={i} className="flex items-start gap-2 text-dusk/80">
+                    <span className="text-gold mt-0.5">→</span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
 
       <div className="flex gap-3">
