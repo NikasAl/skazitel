@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 320px;
+      min-height: 80px;
+      font-family: Georgia, 'Times New Roman', serif;
+      background: linear-gradient(135deg, #fef9ef 0%, #f5ede0 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .container {
+      text-align: center;
+      width: 100%;
+    }
+    .logo {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-size: 18px;
+      color: #2c2418;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 12px;
+      color: #6b5c4d;
+      margin-bottom: 16px;
+    }
+    button {
+      display: block;
+      width: 100%;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 10px;
+      background: #c2572a;
+      color: white;
+      font-family: Georgia, serif;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    button:hover { background: #a84820; }
+    button:active { transform: scale(0.98); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">📖</div>
+    <h1>Сказитель</h1>
+    <div class="subtitle">тренажёр стихосложения</div>
+    <button id="openApp">Открыть</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-serif antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-ember text-white px-6 py-3 rounded-lg font-medium
+      hover:bg-ember/90 transition-colors duration-200
+      active:scale-[0.98] transition-transform;
+  }
+
+  .btn-secondary {
+    @apply bg-dusk/10 text-dusk px-6 py-3 rounded-lg font-medium
+      hover:bg-dusk/20 transition-colors duration-200;
+  }
+
+  .card {
+    @apply bg-white/80 backdrop-blur-sm rounded-xl p-6 shadow-sm
+      border border-dusk/5;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 rounded-lg border border-dusk/20
+      bg-white/60 focus:outline-none focus:ring-2 focus:ring-ember/40
+      focus:border-ember/40 transition-all placeholder:text-dusk/40;
+  }
+
+  .progress-bar {
+    @apply h-2 rounded-full bg-dusk/10 overflow-hidden;
+  }
+
+  .progress-fill {
+    @apply h-full rounded-full bg-gradient-to-r from-ember to-gold
+      transition-all duration-500 ease-out;
+  }
+
+  .screen-container {
+    @apply max-w-2xl mx-auto px-4 py-8;
+  }
+
+  .section-title {
+    @apply text-2xl font-bold text-ink;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+      bg-gold/20 text-gold;
+  }
+}

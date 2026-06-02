@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files (never commit secrets!)
+.env
+.env.local
+.env.*.local
+
+# Agent / system files (never commit these)
+worklog.md
+skills/
+
+# Download artifacts (not project files)
+download/
