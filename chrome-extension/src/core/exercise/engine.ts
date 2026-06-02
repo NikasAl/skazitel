@@ -526,16 +526,16 @@ class ExerciseEngineClass {
   ): Promise<{ exercise: Exercise; usedBuiltin: boolean }> {
     const apiConfig = await getApiConfig();
 
-    // Если нет API — возвращаем встроенное упражнение
-    if (!apiConfig) {
-      const builtin = BUILTIN_EXERCISES.find(e => e.type === type) ?? BUILTIN_EXERCISES[0];
-      return { exercise: { ...builtin, id: crypto.randomUUID(), topicId }, usedBuiltin: true };
-    }
-
-    // Дрели — ищем в встроенных дрелях
+    // Сначала проверяем встроенные дрели (работают без API)
     const drillBuiltin = BUILTIN_DRILLS.find(e => e.type === type);
     if (drillBuiltin) {
       return { exercise: { ...drillBuiltin, id: crypto.randomUUID(), topicId }, usedBuiltin: true };
+    }
+
+    // Если нет API — возвращаем встроенное упражнение из основных
+    if (!apiConfig) {
+      const builtin = BUILTIN_EXERCISES.find(e => e.type === type) ?? BUILTIN_EXERCISES[0];
+      return { exercise: { ...builtin, id: crypto.randomUUID(), topicId }, usedBuiltin: true };
     }
 
     try {
