@@ -62,6 +62,11 @@ export default function ExerciseScreen() {
       const result = await exerciseEngine.generateExercise(type, topicId, topicName, difficulty);
       setExercise(result.exercise);
       setUsedBuiltin(result.usedBuiltin);
+
+      // Если использовался фоллбэк при наличии API — уведомляем пользователя
+      if (result.usedBuiltin) {
+        setError('Не удалось сгенерировать через LLM — показано встроенное задание. Откройте DevTools (F12) для деталей в консоли [Skazitel:engine].');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка генерации упражнения');
     } finally {
@@ -124,9 +129,29 @@ export default function ExerciseScreen() {
       {error && (
         <div className="card mb-4 bg-ember/10 text-ember">
           <p className="text-sm">{error}</p>
-          <button className="text-xs underline mt-1" onClick={() => setError('')}>
-            Скрыть
-          </button>
+          <div className="flex gap-3 mt-2">
+            <button className="text-xs underline" onClick={() => setError('')}>
+              Скрыть
+            </button>
+            <button
+              className="text-xs underline"
+              onClick={() => {
+                // Собираем логи из консоли для отладки
+                const debugInfo = [
+                  'Тип упражнения:', selectedType,
+                  'usedBuiltin:', usedBuiltin,
+                  'exercise.id:', exercise?.id,
+                  'exercise.drillData:', exercise?.drillData ? 'есть' : 'нет',
+                  '',
+                  'Для полной диагностики откройте DevTools → Console и поищите [Skazitel:engine]',
+                ].join('\n');
+                navigator.clipboard?.writeText(debugInfo);
+                alert('Отладочная информация скопирована в буфер обмена.\n\nОткройте DevTools (F12) → Console и поищите [Skazitel:engine] для деталей.');
+              }}
+            >
+              Копировать отладку
+            </button>
+          </div>
         </div>
       )}
 

@@ -544,6 +544,12 @@ class ExerciseEngineClass {
       const userPrompt = getGeneratePrompt(type, topicName, difficulty);
       const systemPrompt = getSystemPrompt();
 
+      console.log('[Skazitel:engine] ═══ Генерация упражнения ═══');
+      console.log('[Skazitel:engine] тип:', type);
+      console.log('[Skazitel:engine] модель:', apiConfig.model);
+      console.log('[Skazitel:engine] сложность:', difficulty);
+      console.log('[Skazitel:engine] промпт (первые 500 символов):', userPrompt.slice(0, 500));
+
       const result = await llmRouter.chatCompletion(
         {
           model: apiConfig.model,
@@ -556,19 +562,44 @@ class ExerciseEngineClass {
         apiConfig.apiKey,
       );
 
+      console.log('[Skazitel:engine] ── Ответ LLM получен ──');
+      console.log('[Skazitel:engine] модель ответа:', result.model);
+      console.log('[Skazitel:engine] токены:', result.usage);
+      console.log('[Skazitel:engine] raw content:', result.content);
+      console.log('[Skazitel:engine] длина ответа:', result.content.length);
+
       const parsed = parseLLMJson<GenerateResponse>(result.content);
+
+      console.log('[Skazitel:engine] ── Результат парсинга ──');
+      if (!parsed) {
+        console.warn('[Skazitel:engine] ❌ parseLLMJson вернул null — JSON не распознан');
+      } else {
+        console.log('[Skazitel:engine] поля:', Object.keys(parsed));
+        console.log('[Skazitel:engine] instruction:', parsed.instruction);
+        if ('question' in parsed) console.log('[Skazitel:engine] question:', (parsed as DrillGenerateResponse).question);
+        if ('options' in parsed) console.log('[Skazitel:engine] options:', (parsed as DrillGenerateResponse).options);
+        if ('correctIndex' in parsed) console.log('[Skazitel:engine] correctIndex:', (parsed as DrillGenerateResponse).correctIndex);
+        if ('correct_index' in (parsed as unknown as Record<string, unknown>)) console.log('[Skazitel:engine] correct_index (snake_case!):', (parsed as unknown as Record<string, unknown>).correct_index);
+      }
 
       if (!parsed || !parsed.instruction) {
         // LLM вернул невалидный JSON — фоллбэк
-        console.warn('ExerciseEngine: невалидный JSON от LLM, используем встроенное упражнение');
+        console.warn('[Skazitel:engine] ❌ Невалидный JSON от LLM, используем встроенное упражнение');
+        console.warn('[Skazitel:engine] parsed:', parsed);
         const fallback = BUILTIN_DRILLS.find(e => e.type === type) ?? BUILTIN_EXERCISES.find(e => e.type === type) ?? BUILTIN_EXERCISES[0];
         return { exercise: { ...fallback, id: crypto.randomUUID(), topicId }, usedBuiltin: true };
       }
 
       const exercise = buildExercise(type, parsed, topicId, difficulty);
       if (!exercise) {
+        console.error('[Skazitel:engine] ❌ buildExercise вернул null для типа', type);
         const fallback = BUILTIN_DRILLS.find(e => e.type === type) ?? BUILTIN_EXERCISES.find(e => e.type === type) ?? BUILTIN_EXERCISES[0];
         return { exercise: { ...fallback, id: crypto.randomUUID(), topicId }, usedBuiltin: true };
+      }
+
+      console.log('[Skazitel:engine] ✅ Упражнение собрано успешно');
+      if (exercise.drillData) {
+        console.log('[Skazitel:engine] drillData:', exercise.drillData);
       }
 
       // Сохраняем упражнение в БД
@@ -576,7 +607,8 @@ class ExerciseEngineClass {
 
       return { exercise, usedBuiltin: false };
     } catch (error) {
-      console.error('ExerciseEngine: ошибка генерации упражнения:', error);
+      console.error('[Skazitel:engine] ❌ Ошибка генерации упражнения:', error);
+      console.error('[Skazitel:engine] стек:', error instanceof Error ? error.stack : 'n/a');
       // Фоллбэк на встроенное
       const fallback = BUILTIN_DRILLS.find(e => e.type === type) ?? BUILTIN_EXERCISES.find(e => e.type === type) ?? BUILTIN_EXERCISES[0];
       return { exercise: { ...fallback, id: crypto.randomUUID(), topicId }, usedBuiltin: true };

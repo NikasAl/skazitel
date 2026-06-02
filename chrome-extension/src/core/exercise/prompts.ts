@@ -581,17 +581,39 @@ export function parseLLMJson<T>(raw: string): T | null {
   }
 
   try {
-    return JSON.parse(cleaned) as T;
+    const parsed = JSON.parse(cleaned) as T;
+    // Нормализация snake_case → camelCase для совместимости с разными LLM
+    return normalizeKeys(parsed) as T;
   } catch {
     // Попытка извлечь JSON из текста (LLM мог добавить текст до/после JSON)
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
-        return JSON.parse(jsonMatch[0]) as T;
+        const parsed = JSON.parse(jsonMatch[0]) as T;
+        return normalizeKeys(parsed) as T;
       } catch {
+        console.warn('[Skazitel:prompts] ❌ Не удалось распарсить JSON:', jsonMatch[0]?.slice(0, 300));
         return null;
       }
     }
+    console.warn('[Skazitel:prompts] ❌ Не найден JSON-объект в ответе LLM (длина:', raw.length, ')');
     return null;
   }
+}
+
+/**
+ * Рекурсивно нормализует snake_case ключи в camelCase.
+ * Некоторые LLM (Gemini, GigaChat, DeepSeek) возвращают snake_case ключи
+ * вместо camelCase, ожидаемых нашим кодом.
+ */
+function normalizeKeys(obj: unknown): unknown {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(normalizeKeys);
+
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+    const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    result[camelKey] = normalizeKeys(value);
+  }
+  return result;
 }
