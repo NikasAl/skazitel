@@ -100,9 +100,15 @@ export class OpenRouterProvider implements LLMProvider {
 
   /**
    * Проверяет валидность API-ключа отправкой минимального запроса.
+   * Если указана modelId — использует её, иначе первую из списка.
    */
-  async validateApiKey(apiKey: string): Promise<boolean> {
+  async validateApiKey(apiKey: string, modelId?: string): Promise<boolean> {
     try {
+      // Убираем префикс провайдера если передан полный ID
+      const model = modelId
+        ? (modelId.startsWith(PROVIDER_PREFIX) ? modelId.slice(PROVIDER_PREFIX.length) : modelId)
+        : 'google/gemini-2.0-flash-001';
+
       const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
@@ -111,12 +117,17 @@ export class OpenRouterProvider implements LLMProvider {
           'HTTP-Referer': 'https://github.com/NikasAl/skazitel',
         },
         body: JSON.stringify({
-          model: 'google/gemini-2.0-flash-lite-001',
+          model,
           messages: [{ role: 'user', content: 'hi' }],
           max_tokens: 1,
         }),
       });
-      return response.ok;
+
+      if (!response.ok) {
+        // 401 = неверный ключ, 404 = модель не найдена
+        return false;
+      }
+      return true;
     } catch {
       return false;
     }

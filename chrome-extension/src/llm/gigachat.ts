@@ -81,7 +81,7 @@ export class GigaChatProvider implements LLMProvider {
   /**
    * Проверяет валидность API-ключа отправкой минимального запроса.
    */
-  async validateApiKey(apiKey: string): Promise<boolean> {
+  async validateApiKey(apiKey: string, _modelId?: string): Promise<boolean> {
     try {
       const response = await fetch(API_URL, {
         method: 'POST',

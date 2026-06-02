@@ -14,6 +14,6 @@ export interface LLMProvider {
   readonly models: LLMModel[];
   /** Отправка запроса к API чата */
   chatCompletion(request: LLMRequest, apiKey: string): Promise<LLMResponse>;
-  /** Проверка валидности ключа API */
-  validateApiKey(apiKey: string): Promise<boolean>;
+  /** Проверка валидности ключа API (с конкретной моделью) */
+  validateApiKey(apiKey: string, modelId?: string): Promise<boolean>;
 }

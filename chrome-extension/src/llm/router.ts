@@ -58,12 +58,17 @@ class LLMRouter {
   /**
    * Проверяет валидность API-ключа для указанного провайдера.
    * Возвращает false при отсутствии провайдера или при любой ошибке.
+   * modelId — полный ID модели (с префиксом провайдера) для проверки.
    */
-  async validateApiKey(providerId: string, apiKey: string): Promise<boolean> {
+  async validateApiKey(providerId: string, apiKey: string, modelId?: string): Promise<boolean> {
     const provider = this.providers.get(providerId);
     if (!provider) return false;
     try {
-      return await provider.validateApiKey(apiKey);
+      // Убираем префикс провайдера из modelId для передачи в провайдер
+      const rawModelId = modelId?.startsWith(providerId + '/')
+        ? modelId.slice(providerId.length + 1)
+        : modelId;
+      return await provider.validateApiKey(apiKey, rawModelId);
     } catch {
       return false;
     }

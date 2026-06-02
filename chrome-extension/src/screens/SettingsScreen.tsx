@@ -46,7 +46,7 @@ export default function SettingsScreen() {
 
     try {
       const providerId = selectedModel.split('/')[0];
-      const isValid = await llmRouter.validateApiKey(providerId, apiKey);
+      const isValid = await llmRouter.validateApiKey(providerId, apiKey, selectedModel);
       if (isValid) {
         setValidationResult('success');
         setValidationMessage('Ключ принят!');
