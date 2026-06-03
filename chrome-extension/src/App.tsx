@@ -8,6 +8,7 @@ import ReviewScreen from './screens/ReviewScreen';
 import CreativeScreen from './screens/CreativeScreen';
 import PoemsScreen from './screens/PoemsScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import LibraryScreen from './screens/LibraryScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="/creative" element={<CreativeScreen />} />
         <Route path="/poems" element={<PoemsScreen />} />
         <Route path="/settings" element={<SettingsScreen />} />
+        <Route path="/library" element={<LibraryScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

@@ -87,9 +87,25 @@ export async function getExercisesByTopic(topicId: string): Promise<Exercise[]> 
   return db.exercises.where('topicId').equals(topicId).toArray();
 }
 
+/** Получить все упражнения (сначала свежие) */
+export async function getAllExercises(): Promise<Exercise[]> {
+  return db.exercises.orderBy('createdAt').reverse().toArray();
+}
+
 /** Получить все упражнения по типу */
 export async function getExercisesByType(type: string): Promise<Exercise[]> {
   return db.exercises.where('type').equals(type).toArray();
+}
+
+/** Удалить упражнение и связанные попытки */
+export async function deleteExercise(id: string): Promise<void> {
+  await db.attempts.where('exerciseId').equals(id).delete();
+  await db.exercises.delete(id);
+}
+
+/** Обновить упражнение */
+export async function updateExercise(id: string, updates: Partial<Exercise>): Promise<void> {
+  await db.exercises.update(id, updates);
 }
 
 // ==================== Попытки ====================

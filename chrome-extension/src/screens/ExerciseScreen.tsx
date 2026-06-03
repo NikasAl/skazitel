@@ -8,9 +8,10 @@ import { getTopics, getProfile } from '../core/storage/repository';
 // Типы упражнений-дрелей (с выбором из вариантов)
 const DRILL_TYPES: ExerciseType[] = ['syllable_count', 'stress_pattern', 'rhyme_match', 'line_builder'];
 
-// Тип для state, передаваемого из HomeScreen
+// Тип для state, передаваемого из HomeScreen или LibraryScreen
 interface ExerciseLocationState {
   exerciseType?: ExerciseType;
+  presetExercise?: Exercise; // Предустановленное упражнение из библиотеки
 }
 
 export default function ExerciseScreen() {
@@ -34,9 +35,13 @@ export default function ExerciseScreen() {
 
   const isDrill = exercise?.drillData != null;
 
-  // Если передан тип упражнения — сразу генерируем
+  // Если передано предустановленное упражнение — показываем сразу, иначе генерируем
   useEffect(() => {
-    if (selectedType) {
+    if (locationState?.presetExercise) {
+      setExercise(locationState.presetExercise);
+      setSelectedType(locationState.presetExercise.type);
+      setUsedBuiltin(false);
+    } else if (selectedType) {
       handleGenerateExercise(selectedType);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

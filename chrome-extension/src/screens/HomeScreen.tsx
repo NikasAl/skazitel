@@ -178,6 +178,9 @@ export default function HomeScreen() {
 
       {/* Навигация */}
       <nav className="mt-8 flex gap-3">
+        <button className="btn-secondary flex-1" onClick={() => navigate('/library')}>
+          Библиотека
+        </button>
         <button className="btn-secondary flex-1" onClick={() => navigate('/poems')}>
           Мои стихи
         </button>
