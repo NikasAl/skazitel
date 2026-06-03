@@ -575,7 +575,7 @@ export function getReviewPrompt(
 ): string {
   switch (type) {
     case 'rhythm':
-      return rhythmReviewPrompt(instruction, userResponse, exerciseData as { meter: string; syllableCount: number; expectedLines: number });
+      return rhythmReviewPrompt(instruction, userResponse, exerciseData?.rhythmData as { meter: string; syllableCount: number; expectedLines: number });
     case 'rhyme':
       return rhymeReviewPrompt(instruction, userResponse);
     case 'metaphor':

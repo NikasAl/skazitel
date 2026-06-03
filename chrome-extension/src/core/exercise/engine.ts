@@ -708,7 +708,6 @@ class ExerciseEngineClass {
             const nested = raw[wk];
             if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
               const nestedObj = nested as Record<string, unknown>;
-              // Проверяем, содержит ли вложенный объект поля review-ответа
               const hasScores = nestedObj.scores && typeof (nestedObj.scores as Record<string, unknown>).overall === 'number';
               const hasStrengths = Array.isArray(nestedObj.strengths);
               const hasWeaknesses = Array.isArray(nestedObj.weaknesses);
@@ -722,10 +721,31 @@ class ExerciseEngineClass {
           }
         }
 
+        // Нормализация плоских score-полей: некоторые LLM возвращают
+        // rhythmScore/rhymeScore/overallScore вместо scores.rhythm/scores.overall
+        if (!parsed.scores || typeof parsed.scores?.overall !== 'number') {
+          const flatScores = ['rhythmScore', 'rhymeScore', 'imageryScore', 'originalityScore', 'overallScore'];
+          const hasFlat = flatScores.some(k => typeof (raw as Record<string, unknown>)[k] === 'number');
+          if (hasFlat) {
+            console.log('[Skazitel:engine] ⚡ Найдены плоские score-поля (rhythmScore и т.п.) — конвертируем в scores');
+            const num = (k: string) => typeof raw[k] === 'number' ? raw[k] as number : 50;
+            parsed = {
+              ...parsed,
+              scores: {
+                rhythm: num('rhythmScore'),
+                rhyme: num('rhymeScore'),
+                imagery: num('imageryScore'),
+                originality: num('originalityScore'),
+                overall: num('overallScore'),
+              },
+            } as unknown as ReviewResponse;
+            console.log('[Skazitel:engine] scores (после конвертации):', parsed.scores);
+          }
+        }
+
         // Дополнительно: scores может быть вложен на 2 уровня
         if (parsed.scores && typeof (parsed.scores as Record<string, unknown>).overall !== 'number') {
           const scoresRaw = parsed.scores as Record<string, unknown>;
-          // scores может быть объектом с вложенным scores
           if (scoresRaw.scores && typeof scoresRaw.scores === 'object') {
             console.log('[Skazitel:engine] ⚡ Двойная вложенность scores — распаковываем');
             parsed.scores = scoresRaw.scores as ReviewResponse['scores'];
