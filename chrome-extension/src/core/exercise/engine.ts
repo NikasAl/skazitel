@@ -568,7 +568,7 @@ class ExerciseEngineClass {
       console.log('[Skazitel:engine] raw content:', result.content);
       console.log('[Skazitel:engine] длина ответа:', result.content.length);
 
-      const parsed = parseLLMJson<GenerateResponse>(result.content);
+      let parsed = parseLLMJson<GenerateResponse>(result.content);
 
       console.log('[Skazitel:engine] ── Результат парсинга ──');
       if (!parsed) {
@@ -576,10 +576,33 @@ class ExerciseEngineClass {
       } else {
         console.log('[Skazitel:engine] поля:', Object.keys(parsed));
         console.log('[Skazitel:engine] instruction:', parsed.instruction);
+
+        // Авто-распаковка: некоторые LLM вкладывают данные в вложенный объект
+        // Например Gemma возвращает { "exercise": { "instruction": ..., "question": ... } }
+        // вместо { "instruction": ..., "question": ... } на верхнем уровне
+        const raw = parsed as unknown as Record<string, unknown>;
+        if (!parsed.instruction) {
+          const wrapperKeys = ['exercise', 'task', 'data'];
+          for (const wk of wrapperKeys) {
+            const nested = raw[wk];
+            if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+              const nestedObj = nested as Record<string, unknown>;
+              if (nestedObj.instruction || nestedObj.question) {
+                console.log(`[Skazitel:engine] ⚡ Найден вложенный объект "${wk}" — распаковываем`);
+                // Мержим: вложенные поля + верхнеуровневые (examples, hints и т.д.)
+                parsed = { ...nestedObj, ...raw } as unknown as GenerateResponse;
+                console.log('[Skazitel:engine] instruction (после распаковки):', parsed.instruction);
+                break;
+              }
+            }
+          }
+        }
+
         if ('question' in parsed) console.log('[Skazitel:engine] question:', (parsed as DrillGenerateResponse).question);
         if ('options' in parsed) console.log('[Skazitel:engine] options:', (parsed as DrillGenerateResponse).options);
         if ('correctIndex' in parsed) console.log('[Skazitel:engine] correctIndex:', (parsed as DrillGenerateResponse).correctIndex);
-        if ('correct_index' in (parsed as unknown as Record<string, unknown>)) console.log('[Skazitel:engine] correct_index (snake_case!):', (parsed as unknown as Record<string, unknown>).correct_index);
+        const rawAfter = parsed as unknown as Record<string, unknown>;
+        if ('correct_index' in rawAfter) console.log('[Skazitel:engine] correct_index (snake_case!):', rawAfter.correct_index);
       }
 
       if (!parsed || !parsed.instruction) {
