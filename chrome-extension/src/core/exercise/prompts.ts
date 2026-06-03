@@ -519,7 +519,11 @@ const REVIEW_JSON_FORMAT = `
   },
   "xpEarned": 10-50,
   "difficultyAdjustment": "up" | "down" | "same"
-}`;
+}
+
+КРИТИЧЕСКОЕ ТРЕБОВАНИЕ: Выведи ОДИН плоский JSON-объект. Все поля (strengths, weaknesses, suggestions, scores, xpEarned и т.д.)
+должны быть на ВЕРХНЕМ уровне. НЕ вкладывай данные в обёртки "review", "result", "analysis", "feedback", "data".
+Ответ должен начинаться с { и заканчиваться } — без текста до и после.`;
 
 // ==================== Промпты проверки (review) по типам ====================
 

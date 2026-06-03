@@ -650,6 +650,7 @@ class ExerciseEngineClass {
 
     // Если нет API — возвращаем встроенный отзыв
     if (!apiConfig) {
+      console.log('[Skazitel:engine] проверка: нет API — встроенный отзыв');
       return getBuiltinReview(exercise, userResponse);
     }
 
@@ -665,6 +666,11 @@ class ExerciseEngineClass {
       );
       const systemPrompt = getSystemPrompt();
 
+      console.log('[Skazitel:engine] ═══ Проверка ответа ═══');
+      console.log('[Skazitel:engine] тип упражнения:', exercise.type);
+      console.log('[Skazitel:engine] модель:', apiConfig.model);
+      console.log('[Skazitel:engine] промпт (первые 500 символов):', reviewPrompt.slice(0, 500));
+
       const result = await llmRouter.chatCompletion(
         {
           model: apiConfig.model,
@@ -677,13 +683,64 @@ class ExerciseEngineClass {
         apiConfig.apiKey,
       );
 
-      const parsed = parseLLMJson<ReviewResponse>(result.content);
+      console.log('[Skazitel:engine] ── Ответ LLM получен (проверка) ──');
+      console.log('[Skazitel:engine] модель ответа:', result.model);
+      console.log('[Skazitel:engine] токены:', result.usage);
+      console.log('[Skazitel:engine] raw content:', result.content);
+      console.log('[Skazitel:engine] длина ответа:', result.content.length);
+
+      let parsed = parseLLMJson<ReviewResponse>(result.content);
+
+      console.log('[Skazitel:engine] ── Результат парсинга (проверка) ──');
+      if (!parsed) {
+        console.warn('[Skazitel:engine] ❌ parseLLMJson вернул null — JSON не распознан');
+      } else {
+        console.log('[Skazitel:engine] поля:', Object.keys(parsed));
+        console.log('[Skazitel:engine] scores:', parsed.scores);
+        console.log('[Skazitel:engine] strengths:', parsed.strengths);
+        console.log('[Skazitel:engine] xpEarned:', parsed.xpEarned);
+
+        // Авто-распаковка: некоторые LLM вкладывают данные в вложенный объект
+        const raw = parsed as unknown as Record<string, unknown>;
+        if (!parsed.scores || typeof parsed.scores?.overall !== 'number') {
+          const wrapperKeys = ['review', 'result', 'analysis', 'feedback', 'evaluation', 'exercise', 'task', 'data'];
+          for (const wk of wrapperKeys) {
+            const nested = raw[wk];
+            if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+              const nestedObj = nested as Record<string, unknown>;
+              // Проверяем, содержит ли вложенный объект поля review-ответа
+              const hasScores = nestedObj.scores && typeof (nestedObj.scores as Record<string, unknown>).overall === 'number';
+              const hasStrengths = Array.isArray(nestedObj.strengths);
+              const hasWeaknesses = Array.isArray(nestedObj.weaknesses);
+              if (hasScores || hasStrengths || hasWeaknesses) {
+                console.log(`[Skazitel:engine] ⚡ Найден вложенный объект "${wk}" в ответе проверки — распаковываем`);
+                parsed = { ...nestedObj, ...raw } as unknown as ReviewResponse;
+                console.log('[Skazitel:engine] scores (после распаковки):', parsed.scores);
+                break;
+              }
+            }
+          }
+        }
+
+        // Дополнительно: scores может быть вложен на 2 уровня
+        if (parsed.scores && typeof (parsed.scores as Record<string, unknown>).overall !== 'number') {
+          const scoresRaw = parsed.scores as Record<string, unknown>;
+          // scores может быть объектом с вложенным scores
+          if (scoresRaw.scores && typeof scoresRaw.scores === 'object') {
+            console.log('[Skazitel:engine] ⚡ Двойная вложенность scores — распаковываем');
+            parsed.scores = scoresRaw.scores as ReviewResponse['scores'];
+          }
+        }
+      }
 
       if (!parsed || typeof parsed.scores?.overall !== 'number') {
         // Невалидный ответ — фоллбэк
-        console.warn('ExerciseEngine: невалидный JSON при проверке, используем встроенный отзыв');
+        console.warn('[Skazitel:engine] ❌ Невалидный JSON при проверке, используем встроенный отзыв');
+        console.warn('[Skazitel:engine] parsed:', parsed);
         return getBuiltinReview(exercise, userResponse);
       }
+
+      console.log('[Skazitel:engine] ✅ Проверка успешно разобрана, overall:', parsed.scores.overall);
 
       // Формируем ExerciseReview
       const review: ExerciseReview = {
@@ -708,7 +765,8 @@ class ExerciseEngineClass {
 
       return review;
     } catch (error) {
-      console.error('ExerciseEngine: ошибка проверки ответа:', error);
+      console.error('[Skazitel:engine] ❌ Ошибка проверки ответа:', error);
+      console.error('[Skazitel:engine] стек:', error instanceof Error ? error.stack : 'n/a');
       return getBuiltinReview(exercise, userResponse);
     }
   }
