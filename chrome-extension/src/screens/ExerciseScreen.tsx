@@ -8,61 +8,250 @@ import { getTopics, getProfile } from '../core/storage/repository';
 // Типы упражнений-дрелей (с выбором из вариантов)
 const DRILL_TYPES: ExerciseType[] = ['syllable_count', 'stress_pattern', 'rhyme_match', 'line_builder'];
 
-// ==================== Разбивка по слогам ====================
+// ==================== Разбивка по слогам + анализ размера ====================
 
 /** Русские гласные буквы (каждая = один слог) */
 const RU_VOWELS = new Set('аеёиоуыэюяАЕЁИОУЫЭЮЯ');
 
-/**
- * Разбивает слово на слоги, вставляя разделитель '·' между ними.
- * Правило: каждая гласная буква начинает новый слог.
- * Пример: "золотой" → "зо·ло·то́й", "вечерний" → "ве·че·рен·ний"
- */
-function splitWordToSyllables(word: string): string {
-  // Убираем пунктуацию по краям
-  const trimmed = word.replace(/^[^а-яА-ЯёЁa-zA-Z]+|[^а-яА-ЯёЁa-zA-Z]+$/g, '');
-  if (!trimmed) return word;
+/** Сонорные — могут быть в конце слога */
+const SONORANTS = new Set('мнлрйМНЛРЙ');
 
-  const prefix = word.slice(0, word.length - trimmed.length);
-  const suffix = word.slice(word.length - (word.length - trimmed.length - prefix.length));
-
-  if (trimmed.length <= 1) return word;
-
-  const chars = [...trimmed];
-  const syllables: string[] = [];
-  let current = chars[0];
-
-  for (let i = 1; i < chars.length; i++) {
-    const ch = chars[i];
-    const prev = chars[i - 1];
-    // Гласная + согласная/й = продолжаем текущий слог
-    // Гласная + гласная = новая гласная начинает новый слог
-    if (RU_VOWELS.has(ch) && (RU_VOWELS.has(prev) || prev === 'й' || prev === 'Й')) {
-      syllables.push(current);
-      current = ch;
-    } else {
-      current += ch;
-    }
-  }
-  if (current) syllables.push(current);
-
-  return prefix + syllables.join('·') + suffix;
+/** Результат разбивки одного слога */
+interface Syllable {
+  text: string;       // текст слога (буквы)
+  vowel: string;     // гласная буква слога
+  isStressed: boolean; // ударный ли (по заглавной гласной)
+  index: number;     // номер слога в слове (0-based)
 }
 
-/** Форматирует строку: разбивает слова на слоги и подсчитывает их */
-function formatLineWithSyllables(line: string): { formatted: string; count: number } {
-  const words = line.split(/(\s+)/);
-  let totalSyllables = 0;
-  const formatted = words.map(w => {
-    if (/^\s+$/.test(w)) return w;
-    const syllableWord = splitWordToSyllables(w);
-    // Считаем гласные в очищенном слове
-    const clean = w.replace(/[^а-яА-ЯёЁ]/g, '');
-    const count = [...clean].filter(c => RU_VOWELS.has(c)).length;
-    totalSyllables += count;
-    return syllableWord;
-  }).join('');
-  return { formatted, count: totalSyllables };
+/** Результат разбивки одного слова */
+interface WordSyllables {
+  prefix: string;    // пунктуация до слова
+  suffix: string;    // пунктуация после слова
+  syllables: Syllable[];
+}
+
+/** Результат разбивки строки + анализ */
+interface LineAnalysis {
+  words: WordSyllables[];
+  syllableCount: number;
+  stressPattern: boolean[];  // true = ударный
+  isEmpty: boolean;
+  meter?: string;      // определённый размер
+  meterConfidence?: number;  // уверенность 0-1
+}
+
+/** Результат полного анализа текста */
+interface TextAnalysis {
+  lines: LineAnalysis[];
+  overallMeter?: string;
+  overallConfidence?: number;
+}
+
+/**
+ * Правильная разбивка русского слова на слоги.
+ * Правило: каждый слог содержит ровно одну гласную.
+ * Согласные до гласной → в этот слог.
+ * Согласные после гласной → к следующему слогу (кроме сонорных на конце слова).
+ * Пример: "золотой" → ["зо", "ло", "то", "й"], "вечерний" → ["ве", "че", "рен", "ний"]
+ */
+function splitWordToSyllables(word: string): WordSyllables {
+  // Выделяем префикс/суффикс (пунктуация)
+  const match = word.match(/^([^а-яА-ЯёЁ]*)([а-яА-ЯёЁ]+)([^а-яА-ЯёЁ]*)$/);
+  if (!match) return { prefix: word, suffix: '', syllables: [] };
+
+  const prefix = match[1];
+  const core = match[2];
+  const suffix = match[3];
+  const chars = [...core];
+
+  if (chars.length === 0) return { prefix, suffix, syllables: [] };
+
+  // Находим индексы всех гласных
+  const vowelIndices: number[] = [];
+  for (let i = 0; i < chars.length; i++) {
+    if (RU_VOWELS.has(chars[i])) vowelIndices.push(i);
+  }
+
+  if (vowelIndices.length === 0) return { prefix, suffix, syllables: [{ text: core, vowel: '', isStressed: false, index: 0 }] };
+
+  const syllables: Syllable[] = [];
+
+  for (let s = 0; s < vowelIndices.length; s++) {
+    const vIdx = vowelIndices[s];
+    const vowelChar = chars[vIdx];
+
+    // Определяем начало слога: после предыдущей гласной (+ сонорные после неё)
+    let start = vIdx;
+    if (s > 0) {
+      start = vowelIndices[s - 1] + 1;
+      // Сонорные после предыдущей гласной уходят в текущий слог
+      // но только если перед текущей гласной есть согласные
+      const consonantsBefore = vIdx - start;
+      let sonorantCarry = 0;
+      for (let k = start; k < vIdx; k++) {
+        if (SONORANTS.has(chars[k])) sonorantCarry++;
+        else break;
+      }
+      // Если все согласные — сонорные и их <= 1, оставляем в текущем
+      // Иначе переносим сонорные к текущей гласной
+      if (sonorantCarry < consonantsBefore) {
+        start += sonorantCarry;
+      }
+    }
+
+    // Определяем конец слога: до следующей гласной (+ сонорные)
+    let end = s < vowelIndices.length - 1
+      ? vowelIndices[s + 1]
+      : chars.length;
+
+    // Сонорные/й после гласной уходят в текущий слог (если до следующей гласной есть ещё согласные)
+    if (s < vowelIndices.length - 1 && end > vIdx + 1) {
+      let sonorantTail = 0;
+      for (let k = vIdx + 1; k < end; k++) {
+        if (SONORANTS.has(chars[k]) || chars[k] === 'й' || chars[k] === 'Й') sonorantTail++;
+        else break;
+      }
+      // Если после сонорных есть ещё согласные — оставляем сонорные в текущем
+      if (end - vIdx - 1 > sonorantTail) {
+        end = vIdx + 1 + sonorantTail;
+      }
+    }
+
+    const syllableText = chars.slice(start, end).join('');
+    const isStressed = vowelChar !== vowelChar.toLowerCase(); // заглавная гласная = ударный
+
+    syllables.push({
+      text: syllableText,
+      vowel: vowelChar,
+      isStressed,
+      index: s,
+    });
+  }
+
+  return { prefix, suffix, syllables };
+}
+
+/** Разбивает строку на слова и слоги */
+function analyzeLine(line: string): LineAnalysis {
+  const trimmed = line.trim();
+  if (!trimmed) return { words: [], syllableCount: 0, stressPattern: [], isEmpty: true };
+
+  // Разбиваем на слова, сохраняя пробелы
+  const tokens = trimmed.split(/(\s+)/);
+  const words: WordSyllables[] = [];
+  const stressPattern: boolean[] = [];
+
+  for (const token of tokens) {
+    if (/^\s+$/.test(token)) continue;
+    const ws = splitWordToSyllables(token);
+    words.push(ws);
+    for (const syl of ws.syllables) {
+      stressPattern.push(syl.isStressed);
+    }
+  }
+
+  const syllableCount = words.reduce((s, w) => s + w.syllables.length, 0);
+  const analysis = { words, syllableCount, stressPattern, isEmpty: false };
+
+  // Определяем размер
+  const meterResult = detectMeter(stressPattern);
+  return { ...analysis, ...meterResult };
+}
+
+/** Схемы стихотворных размеров */
+interface MeterPattern {
+  name: string;
+  short: string;   // аббревиатура
+  pattern: number[]; // 0=безударный, 1=ударный, -1=любой
+  description: string;
+}
+
+const METER_PATTERNS: MeterPattern[] = [
+  { name: 'Хорей', short: 'Х', pattern: [1, 0, 1, 0], description: 'ТА-та-ТА-та' },
+  { name: 'Ямб', short: 'Я', pattern: [0, 1, 0, 1], description: 'та-ТА-та-ТА' },
+  { name: 'Дактиль', short: 'Д', pattern: [1, 0, 0, 1, 0, 0], description: 'ТА-та-та-ТА-та-та' },
+  { name: 'Амфибрахий', short: 'Ам', pattern: [0, 1, 0, 0, 1, 0], description: 'та-ТА-та-та-ТА-та' },
+  { name: 'Анапест', short: 'Ан', pattern: [0, 0, 1, 0, 0, 1], description: 'та-та-ТА-та-ta-ТА' },
+  { name: 'Пеон I', short: 'П1', pattern: [1, 0, 0, 0], description: 'ТА-та-та-та' },
+  { name: 'Пеон II', short: 'П2', pattern: [0, 1, 0, 0], description: 'та-ТА-та-та' },
+  { name: 'Пеон III', short: 'П3', pattern: [0, 0, 1, 0], description: 'та-та-ТА-та' },
+  { name: 'Пеон IV', short: 'П4', pattern: [0, 0, 0, 1], description: 'та-та-та-ТА' },
+];
+
+/** Определяет ближайший стихотворный размер по схеме ударений */
+function detectMeter(stressPattern: boolean[]): { meter?: string; meterConfidence?: number } {
+  if (stressPattern.length < 3) return {};
+
+  let bestMeter = '';
+  let bestConfidence = 0;
+
+  for (const meter of METER_PATTERNS) {
+    const score = matchPattern(stressPattern, meter.pattern);
+    if (score > bestConfidence) {
+      bestConfidence = score;
+      bestMeter = meter.name;
+    }
+  }
+
+  return bestConfidence >= 0.3 ? { meter: bestMeter, meterConfidence: Math.round(bestConfidence * 100) / 100 } : {};
+}
+
+/** Считает совпадение схемы ударений с паттерном */
+function matchPattern(stress: boolean[], pattern: number[]): number {
+  if (stress.length < pattern.length) return 0;
+
+  let matches = 0;
+  let checks = 0;
+
+  // Проверяем все возможные начальные позиции (для разных стоп)
+  for (let offset = 0; offset < Math.min(stress.length, pattern.length); offset++) {
+    let m = 0;
+    let c = 0;
+    for (let i = 0; i < stress.length && (offset + i < pattern.length || i < stress.length); i++) {
+      const pIdx = (offset + i) % pattern.length;
+      const p = pattern[pIdx];
+      if (p === -1) continue;
+      c++;
+      if ((p === 1 && stress[i]) || (p === 0 && !stress[i])) m++;
+    }
+    if (c > checks) {
+      checks = c;
+      matches = m;
+    }
+  }
+
+  return checks > 0 ? matches / checks : 0;
+}
+
+/** Полный анализ текста */
+function analyzeText(text: string): TextAnalysis {
+  const lines = text.split('\n');
+  const result = lines.map(l => analyzeLine(l));
+
+  // Определяем общий размер по совпадению строк
+  const nonEmpty = result.filter(l => !l.isEmpty && l.meter);
+  if (nonEmpty.length >= 2) {
+    // Считаем частоту каждого размера
+    const freq: Record<string, number> = {};
+    let totalConf = 0;
+    for (const l of nonEmpty) {
+      if (l.meter) {
+        freq[l.meter] = (freq[l.meter] || 0) + 1;
+        totalConf += l.meterConfidence || 0;
+      }
+    }
+    const top = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+    if (top && top[1] >= nonEmpty.length * 0.5) {
+      return {
+        lines: result,
+        overallMeter: top[0],
+        overallConfidence: Math.round((totalConf / nonEmpty.length) * 100) / 100,
+      };
+    }
+  }
+
+  return { lines: result };
 }
 
 // Тип для state, передаваемого из HomeScreen или LibraryScreen
@@ -92,16 +281,10 @@ export default function ExerciseScreen() {
 
   const isDrill = exercise?.drillData != null;
 
-  // Разбивка по слогам для текущего ответа
-  const syllableData = useMemo(() => {
+  // Полный анализ текста (слоги, ударения, размер)
+  const textAnalysis = useMemo(() => {
     if (!response.trim()) return null;
-    const lines = response.split('\n');
-    return lines.map(line => {
-      const trimmed = line.trim();
-      if (!trimmed) return { formatted: '', count: 0, isEmpty: true };
-      const result = formatLineWithSyllables(trimmed);
-      return { ...result, isEmpty: false };
-    });
+    return analyzeText(response);
   }, [response]);
 
   // Если передано предустановленное упражнение — показываем сразу, иначе генерируем
@@ -395,57 +578,133 @@ export default function ExerciseScreen() {
                 <span>{response.split(/\s+/).filter(Boolean).length} слов</span>
               </div>
 
-              {/* Панель разбивки по слогам */}
-              {syllableData && (
+              {/* Панель анализа: слоги, ударения, размер */}
+              {textAnalysis && (
                 <div className="card mt-3 bg-dusk/5">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-dusk/60">Разбивка по слогам</h3>
+                    <h3 className="text-sm font-medium text-dusk/60">Анализ ритмики</h3>
                     <button
                       className="text-xs text-dusk/40 hover:text-dusk/60 transition-colors"
                       onClick={() => {
-                        if (!exercise?.instruction) return;
-                        // Копируем разбивку в буфер
-                        const text = syllableData
-                          .filter(d => !d.isEmpty)
-                          .map(d => `${d.formatted} (${d.count})`)
+                        const text = textAnalysis.lines
+                          .filter(l => !l.isEmpty)
+                          .map(l => {
+                            const sylText = l.words.map(w =>
+                              w.prefix + w.syllables.map(s => s.text).join('·') + w.suffix
+                            ).join(' ');
+                            return `${sylText} (${l.syllableCount})${l.meter ? ' [' + l.meter + ']' : ''}`;
+                          })
                           .join('\n');
                         navigator.clipboard?.writeText(text);
                       }}
-                      title="Скопировать разбивку"
+                      title="Скопировать анализ"
                     >
                       копировать
                     </button>
                   </div>
-                  <div className="space-y-1">
-                    {syllableData.map((line, i) =>
+
+                  {/* Общий размер */}
+                  {textAnalysis.overallMeter && (
+                    <div className="mb-3 px-3 py-2 rounded-lg bg-gold/10 border border-gold/20">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gold font-bold">{textAnalysis.overallMeter}</span>
+                        <span className="text-xs text-gold/60">
+                          (уверенность {Math.round((textAnalysis.overallConfidence || 0) * 100)}%)
+                        </span>
+                      </div>
+                      <p className="text-xs text-dusk/50 mt-1">
+                        Для точности выделяйте ударный слог ЗАГЛАВНОЙ буквой гласной: «мОРОЗ и сОЛнце»
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Построчный анализ */}
+                  <div className="space-y-1.5">
+                    {textAnalysis.lines.map((line, i) =>
                       line.isEmpty ? (
-                        <div key={i} className="h-3" />
+                        <div key={i} className="h-2" />
                       ) : (
                         <div key={i} className="flex items-baseline gap-2">
+                          {/* Количество слогов */}
                           <span className="text-xs text-dusk/30 w-5 text-right flex-shrink-0 font-mono">
-                            {line.count}
+                            {line.syllableCount}
                           </span>
-                          <span className="font-serif text-sm text-dusk/70 leading-relaxed tracking-wide">
-                            {line.formatted}
+                          {/* Слова с разбивкой и цветом */}
+                          <span className="font-serif text-sm leading-relaxed">
+                            {line.words.map((w, wi) => (
+                              <span key={wi}>
+                                {w.prefix}
+                                {w.syllables.map((syl, si) => (
+                                  <span
+                                    key={si}
+                                    className={
+                                      syl.isStressed
+                                        ? 'bg-ember/20 text-ember rounded px-px font-bold'
+                                        : 'bg-dusk/10 text-dusk/60 rounded px-px'
+                                    }
+                                    title={syl.isStressed ? 'ударный' : 'безударный'}
+                                  >
+                                    {syl.text}
+                                  </span>
+                                ))}
+                                {w.suffix}
+                                {wi < line.words.length - 1 ? ' ' : ''}
+                              </span>
+                            ))}
                           </span>
+                          {/* Размер строки */}
+                          {line.meter && (
+                            <span className="text-xs text-gold/60 flex-shrink-0 font-mono">
+                              {line.meter}
+                            </span>
+                          )}
                         </div>
                       ),
                     )}
                   </div>
-                  {syllableData.some(d => !d.isEmpty && d.count > 0) && (
+
+                  {/* Схема ударений для всех строк */}
+                  {textAnalysis.lines.some(l => !l.isEmpty && l.stressPattern.length > 0) && (
+                    <div className="mt-3 pt-2 border-t border-dusk/10">
+                      <p className="text-xs text-dusk/40 mb-1">Схема ударений:</p>
+                      <div className="space-y-0.5">
+                        {textAnalysis.lines.map((line, i) =>
+                          line.isEmpty ? null : (
+                            <div key={i} className="flex gap-1 items-center">
+                              {line.stressPattern.map((isStressed, si) => (
+                                <span
+                                  key={si}
+                                  className={`w-5 h-5 rounded text-center text-xs leading-5 font-mono ${
+                                    isStressed
+                                      ? 'bg-ember/20 text-ember font-bold'
+                                      : 'bg-dusk/10 text-dusk/30'
+                                  }`}
+                                >
+                                  {isStressed ? 'ТА' : 'та'}
+                                </span>
+                              ))}
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Итого */}
+                  {textAnalysis.lines.some(d => !d.isEmpty && d.syllableCount > 0) && (
                     <div className="mt-2 pt-2 border-t border-dusk/10 flex gap-4 text-xs text-dusk/40">
                       <span>
-                        Строк: {syllableData.filter(d => !d.isEmpty).length}
+                        Строк: {textAnalysis.lines.filter(d => !d.isEmpty).length}
                       </span>
                       <span>
-                        Слогов: {syllableData.reduce((s, d) => s + d.count, 0)}
+                        Слогов: {textAnalysis.lines.reduce((s, d) => s + d.syllableCount, 0)}
                       </span>
-                      {syllableData.filter(d => !d.isEmpty).length > 0 && (
+                      {textAnalysis.lines.filter(d => !d.isEmpty).length > 0 && (
                         <span>
                           В среднем:{' '}
                           {Math.round(
-                            syllableData.reduce((s, d) => s + d.count, 0) /
-                            syllableData.filter(d => !d.isEmpty).length,
+                            textAnalysis.lines.reduce((s, d) => s + d.syllableCount, 0) /
+                            textAnalysis.lines.filter(d => !d.isEmpty).length,
                           )}{' '}
                           слогов/строку
                         </span>
