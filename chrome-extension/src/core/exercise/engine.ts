@@ -722,24 +722,32 @@ class ExerciseEngineClass {
         }
 
         // Нормализация плоских score-полей: некоторые LLM возвращают
-        // rhythmScore/rhymeScore/overallScore вместо scores.rhythm/scores.overall
+        // Вариант A: "rhythmScore": 20 вместо "scores": { "rhythm": 20 }
+        // Вариант B: "rhythm": 20 вместо "scores": { "rhythm": 20 }
         if (!parsed.scores || typeof parsed.scores?.overall !== 'number') {
-          const flatScores = ['rhythmScore', 'rhymeScore', 'imageryScore', 'originalityScore', 'overallScore'];
-          const hasFlat = flatScores.some(k => typeof (raw as Record<string, unknown>)[k] === 'number');
-          if (hasFlat) {
+          const scoreNames = ['rhythm', 'rhyme', 'imagery', 'originality', 'overall'];
+          // Вариант A: с суффиксом Score
+          const flatA = scoreNames.map(n => n + 'Score');
+          const hasFlatA = flatA.some(k => typeof raw[k] === 'number');
+          // Вариант B: без суффикса (прямые имена, но числа — не массивы/строки)
+          const hasFlatB = scoreNames.some(k => typeof raw[k] === 'number');
+
+          if (hasFlatA) {
             console.log('[Skazitel:engine] ⚡ Найдены плоские score-поля (rhythmScore и т.п.) — конвертируем в scores');
             const num = (k: string) => typeof raw[k] === 'number' ? raw[k] as number : 50;
             parsed = {
               ...parsed,
-              scores: {
-                rhythm: num('rhythmScore'),
-                rhyme: num('rhymeScore'),
-                imagery: num('imageryScore'),
-                originality: num('originalityScore'),
-                overall: num('overallScore'),
-              },
+              scores: { rhythm: num('rhythmScore'), rhyme: num('rhymeScore'), imagery: num('imageryScore'), originality: num('originalityScore'), overall: num('overallScore') },
             } as unknown as ReviewResponse;
-            console.log('[Skazitel:engine] scores (после конвертации):', parsed.scores);
+            console.log('[Skazitel:engine] scores (после конвертации A):', parsed.scores);
+          } else if (hasFlatB) {
+            console.log('[Skazitel:engine] ⚡ Найдены плоские score-поля (rhythm, overall и т.п.) — конвертируем в scores');
+            const num = (k: string) => typeof raw[k] === 'number' ? raw[k] as number : 50;
+            parsed = {
+              ...parsed,
+              scores: { rhythm: num('rhythm'), rhyme: num('rhyme'), imagery: num('imagery'), originality: num('originality'), overall: num('overall') },
+            } as unknown as ReviewResponse;
+            console.log('[Skazitel:engine] scores (после конвертации B):', parsed.scores);
           }
         }
 

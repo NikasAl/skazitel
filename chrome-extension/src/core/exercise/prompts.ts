@@ -521,8 +521,17 @@ const REVIEW_JSON_FORMAT = `
   "difficultyAdjustment": "up" | "down" | "same"
 }
 
-КРИТИЧЕСКОЕ ТРЕБОВАНИЕ: Выведи ОДИН плоский JSON-объект. Все поля (strengths, weaknesses, suggestions, scores, xpEarned и т.д.)
-должны быть на ВЕРХНЕМ уровне. НЕ вкладывай данные в обёртки "review", "result", "analysis", "feedback", "data".
+КРИТИЧЕСКОЕ ТРЕБОВАНИЕ К ФОРМАТУ:
+1. Все оценки ДОЛЖНЫ быть вложены в объект "scores". НЕ пиши их на верхнем уровне.
+2. Все поля (strengths, weaknesses, suggestions, scores, xpEarned) — на ВЕРХНЕМ уровне. НЕ вкладывай в обёртки "review", "result", "analysis".
+
+ПРАВИЛЬНО:
+{"strengths": [...], "weaknesses": [...], "suggestions": [...], "scores": {"rhythm": 20, "overall": 40}, "xpEarned": 15}
+
+НЕПРАВИЛЬНО (ошибки):
+{"strengths": [...], "rhythm": 20, "overall": 40}
+{"strengths": [...], "rhythmScore": 20, "overallScore": 40}
+{"review": {"strengths": [...], "scores": {...}}}
 Ответ должен начинаться с { и заканчиваться } — без текста до и после.`;
 
 // ==================== Промпты проверки (review) по типам ====================
