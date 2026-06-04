@@ -97,15 +97,6 @@ export default function LibraryScreen() {
     });
   };
 
-  const getPreview = (exercise: Exercise): string => {
-    if (exercise.drillData) {
-      return exercise.drillData.question;
-    }
-    // Для обычных упражнений берём первую строку instruction
-    const firstLine = exercise.instruction.split('\n')[0];
-    return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine;
-  };
-
   return (
     <div className="screen-container">
       <header className="flex items-center gap-3 mb-6">
@@ -265,17 +256,47 @@ export default function LibraryScreen() {
                   </div>
                 ) : (
                   <>
-                    {/* Превью */}
-                    <p className="text-sm text-dusk/70 font-serif leading-relaxed mb-3">
-                      {getPreview(exercise)}
-                    </p>
-
-                    {/* Для дрелей — краткая информация о вариантах */}
-                    {isDrill && exercise.drillData && (
-                      <div className="text-xs text-dusk/40 mb-3 flex items-center gap-2">
-                        <span>{exercise.drillData.options.length} варианта</span>
-                        <span>·</span>
-                        <span>Ответ: {exercise.drillData.options[exercise.drillData.correctIndex]}</span>
+                    {/* Полное задание */}
+                    {isDrill && exercise.drillData ? (
+                      <div className="bg-dusk/5 rounded-lg p-3 mb-3">
+                        <p className="text-sm text-dusk/80 font-serif leading-relaxed mb-2">
+                          {exercise.drillData.question}
+                        </p>
+                        <div className="space-y-1 mb-2">
+                          {exercise.drillData.options.map((opt, i) => (
+                            <div
+                              key={i}
+                              className={`text-xs font-serif px-2 py-1 rounded ${
+                                i === exercise.drillData!.correctIndex
+                                  ? 'bg-sage/15 text-sage'
+                                  : 'text-dusk/50'
+                              }`}
+                            >
+                              {String.fromCharCode(1040 + i)}. {opt}
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-dusk/40 italic">
+                          {exercise.drillData.explanation}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="bg-dusk/5 rounded-lg p-3 mb-3">
+                        <p className="text-sm text-dusk/80 font-serif leading-relaxed whitespace-pre-wrap">
+                          {exercise.instruction}
+                        </p>
+                        {exercise.successCriteria.length > 0 && (
+                          <div className="mt-2 pt-2 border-t border-dusk/10">
+                            <p className="text-xs text-dusk/40 mb-1">Критерии успеха:</p>
+                            <ul className="text-xs text-dusk/50 space-y-0.5">
+                              {exercise.successCriteria.map((c, i) => (
+                                <li key={i} className="flex items-start gap-1">
+                                  <span className="text-gold/60">•</span> {c}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
                     )}
 

@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { Exercise, ExerciseType } from '../core/types';
 import { EXERCISE_TYPE_INFO, EXERCISE_TYPES } from '../core/types';
 import { exerciseEngine } from '../core/exercise/engine';
@@ -7,6 +7,63 @@ import { getTopics, getProfile } from '../core/storage/repository';
 
 // Типы упражнений-дрелей (с выбором из вариантов)
 const DRILL_TYPES: ExerciseType[] = ['syllable_count', 'stress_pattern', 'rhyme_match', 'line_builder'];
+
+// ==================== Разбивка по слогам ====================
+
+/** Русские гласные буквы (каждая = один слог) */
+const RU_VOWELS = new Set('аеёиоуыэюяАЕЁИОУЫЭЮЯ');
+
+/**
+ * Разбивает слово на слоги, вставляя разделитель '·' между ними.
+ * Правило: каждая гласная буква начинает новый слог.
+ * Пример: "золотой" → "зо·ло·то́й", "вечерний" → "ве·че·рен·ний"
+ */
+function splitWordToSyllables(word: string): string {
+  // Убираем пунктуацию по краям
+  const trimmed = word.replace(/^[^а-яА-ЯёЁa-zA-Z]+|[^а-яА-ЯёЁa-zA-Z]+$/g, '');
+  if (!trimmed) return word;
+
+  const prefix = word.slice(0, word.length - trimmed.length);
+  const suffix = word.slice(word.length - (word.length - trimmed.length - prefix.length));
+
+  if (trimmed.length <= 1) return word;
+
+  const chars = [...trimmed];
+  const syllables: string[] = [];
+  let current = chars[0];
+
+  for (let i = 1; i < chars.length; i++) {
+    const ch = chars[i];
+    const prev = chars[i - 1];
+    // Гласная + согласная/й = продолжаем текущий слог
+    // Гласная + гласная = новая гласная начинает новый слог
+    if (RU_VOWELS.has(ch) && (RU_VOWELS.has(prev) || prev === 'й' || prev === 'Й')) {
+      syllables.push(current);
+      current = ch;
+    } else {
+      current += ch;
+    }
+  }
+  if (current) syllables.push(current);
+
+  return prefix + syllables.join('·') + suffix;
+}
+
+/** Форматирует строку: разбивает слова на слоги и подсчитывает их */
+function formatLineWithSyllables(line: string): { formatted: string; count: number } {
+  const words = line.split(/(\s+)/);
+  let totalSyllables = 0;
+  const formatted = words.map(w => {
+    if (/^\s+$/.test(w)) return w;
+    const syllableWord = splitWordToSyllables(w);
+    // Считаем гласные в очищенном слове
+    const clean = w.replace(/[^а-яА-ЯёЁ]/g, '');
+    const count = [...clean].filter(c => RU_VOWELS.has(c)).length;
+    totalSyllables += count;
+    return syllableWord;
+  }).join('');
+  return { formatted, count: totalSyllables };
+}
 
 // Тип для state, передаваемого из HomeScreen или LibraryScreen
 interface ExerciseLocationState {
@@ -34,6 +91,18 @@ export default function ExerciseScreen() {
   const [usedBuiltin, setUsedBuiltin] = useState(true);
 
   const isDrill = exercise?.drillData != null;
+
+  // Разбивка по слогам для текущего ответа
+  const syllableData = useMemo(() => {
+    if (!response.trim()) return null;
+    const lines = response.split('\n');
+    return lines.map(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return { formatted: '', count: 0, isEmpty: true };
+      const result = formatLineWithSyllables(trimmed);
+      return { ...result, isEmpty: false };
+    });
+  }, [response]);
 
   // Если передано предустановленное упражнение — показываем сразу, иначе генерируем
   useEffect(() => {
@@ -325,6 +394,66 @@ export default function ExerciseScreen() {
                 <span>{response.split('\n').filter(Boolean).length} строк</span>
                 <span>{response.split(/\s+/).filter(Boolean).length} слов</span>
               </div>
+
+              {/* Панель разбивки по слогам */}
+              {syllableData && (
+                <div className="card mt-3 bg-dusk/5">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-dusk/60">Разбивка по слогам</h3>
+                    <button
+                      className="text-xs text-dusk/40 hover:text-dusk/60 transition-colors"
+                      onClick={() => {
+                        if (!exercise?.instruction) return;
+                        // Копируем разбивку в буфер
+                        const text = syllableData
+                          .filter(d => !d.isEmpty)
+                          .map(d => `${d.formatted} (${d.count})`)
+                          .join('\n');
+                        navigator.clipboard?.writeText(text);
+                      }}
+                      title="Скопировать разбивку"
+                    >
+                      копировать
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {syllableData.map((line, i) =>
+                      line.isEmpty ? (
+                        <div key={i} className="h-3" />
+                      ) : (
+                        <div key={i} className="flex items-baseline gap-2">
+                          <span className="text-xs text-dusk/30 w-5 text-right flex-shrink-0 font-mono">
+                            {line.count}
+                          </span>
+                          <span className="font-serif text-sm text-dusk/70 leading-relaxed tracking-wide">
+                            {line.formatted}
+                          </span>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                  {syllableData.some(d => !d.isEmpty && d.count > 0) && (
+                    <div className="mt-2 pt-2 border-t border-dusk/10 flex gap-4 text-xs text-dusk/40">
+                      <span>
+                        Строк: {syllableData.filter(d => !d.isEmpty).length}
+                      </span>
+                      <span>
+                        Слогов: {syllableData.reduce((s, d) => s + d.count, 0)}
+                      </span>
+                      {syllableData.filter(d => !d.isEmpty).length > 0 && (
+                        <span>
+                          В среднем:{' '}
+                          {Math.round(
+                            syllableData.reduce((s, d) => s + d.count, 0) /
+                            syllableData.filter(d => !d.isEmpty).length,
+                          )}{' '}
+                          слогов/строку
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
