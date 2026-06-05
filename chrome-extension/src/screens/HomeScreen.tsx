@@ -1,7 +1,14 @@
 import { useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { db } from '../core/storage/db';
-import { getRecentAttempts } from '../core/storage/repository';
+import {
+  getRecentAttempts,
+  getExerciseCountByTopic,
+  addTopic,
+  deleteTopic,
+  setActiveTopicId,
+  getActiveTopicId,
+} from '../core/storage/repository';
 import type { UserProfile, Topic, ExerciseAttempt } from '../core/types';
 import { LEVEL_NAMES, LEVEL_XP_TABLE, EXERCISE_TYPE_INFO, EXERCISE_TYPES } from '../core/types';
 
@@ -9,14 +16,36 @@ export default function HomeScreen() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [topicCounts, setTopicCounts] = useState<Record<string, number>>({});
+  const [activeTopicId, setActiveTopicIdState] = useState<string | undefined>(undefined);
   const [recentAttempts, setRecentAttempts] = useState<ExerciseAttempt[]>([]);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [showAddTopic, setShowAddTopic] = useState(false);
+  const [newTopicName, setNewTopicName] = useState('');
+
+  const loadData = useCallback(async () => {
+    const [p, t, attempts, activeId] = await Promise.all([
+      db.profiles.toCollection().first(),
+      db.topics.toArray(),
+      getRecentAttempts(5),
+      getActiveTopicId(),
+    ]);
+    setProfile(p ?? null);
+    setTopics(t);
+    setActiveTopicIdState(activeId);
+    setRecentAttempts(attempts);
+
+    // Динамический подсчёт упражнений по каждой теме
+    const counts: Record<string, number> = {};
+    for (const topic of t) {
+      counts[topic.id] = await getExerciseCountByTopic(topic.id);
+    }
+    setTopicCounts(counts);
+  }, []);
 
   useEffect(() => {
-    db.profiles.toCollection().first().then((p) => setProfile(p ?? null));
-    db.topics.toArray().then(setTopics);
-    getRecentAttempts(5).then(setRecentAttempts);
-  }, []);
+    loadData();
+  }, [loadData]);
 
   const xpProgress = profile
     ? ((profile.xp - (LEVEL_XP_TABLE[profile.level] ?? 0)) /
@@ -24,6 +53,44 @@ export default function HomeScreen() {
           (LEVEL_XP_TABLE[profile.level] ?? 0))) *
       100
     : 0;
+
+  // Создание новой темы
+  const handleAddTopic = async () => {
+    const name = newTopicName.trim();
+    if (!name) return;
+
+    const topic = await addTopic({ name, isBuiltIn: false });
+    setNewTopicName('');
+    setShowAddTopic(false);
+
+    // Если это первая тема — автоматически делаем её активной
+    if (topics.length === 0) {
+      await setActiveTopicId(topic.id);
+    }
+
+    await loadData();
+  };
+
+  // Удаление темы
+  const handleDeleteTopic = async (topicId: string) => {
+    await deleteTopic(topicId);
+
+    // Если удалённая тема была активной — сбрасываем
+    if (activeTopicId === topicId) {
+      const remaining = topics.filter((t) => t.id !== topicId);
+      const newActive = remaining[0]?.id;
+      await setActiveTopicId(newActive);
+    }
+
+    await loadData();
+  };
+
+  // Выбор активной темы
+  const handleSelectTopic = async (topicId: string) => {
+    if (activeTopicId === topicId) return; // уже активна
+    await setActiveTopicId(topicId);
+    await loadData();
+  };
 
   return (
     <div className="screen-container">
@@ -153,26 +220,114 @@ export default function HomeScreen() {
       )}
 
       {/* Темы */}
-      <section>
-        <h2 className="section-title mb-4">Мои темы</h2>
-        {topics.length === 0 ? (
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="section-title mb-0">Мои темы</h2>
+          <button
+            onClick={() => setShowAddTopic(!showAddTopic)}
+            className="text-sm text-ember hover:text-ember/80 transition-colors"
+          >
+            {showAddTopic ? 'Отмена' : '+ Добавить'}
+          </button>
+        </div>
+
+        {/* Форма добавления новой темы */}
+        {showAddTopic && (
+          <div className="card mb-3 bg-dusk/5">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newTopicName}
+                onChange={(e) => setNewTopicName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddTopic()}
+                placeholder="Название темы..."
+                className="input-field flex-1 text-sm"
+                autoFocus
+              />
+              <button
+                onClick={handleAddTopic}
+                disabled={!newTopicName.trim()}
+                className="btn-primary px-4 text-sm disabled:opacity-40"
+              >
+                Создать
+              </button>
+            </div>
+          </div>
+        )}
+
+        {topics.length === 0 && !showAddTopic ? (
           <div className="card text-center text-dusk/50 py-8">
-            Пока нет тем. Добавьте тему в настройках или начните задание.
+            <p>Пока нет тем.</p>
+            <button
+              onClick={() => setShowAddTopic(true)}
+              className="text-sm text-ember hover:text-ember/80 mt-2 underline"
+            >
+              Создать первую тему
+            </button>
           </div>
         ) : (
           <div className="space-y-2">
-            {topics.map((topic) => (
-              <div key={topic.id} className="card flex items-center justify-between py-4">
-                <div>
-                  <div className="font-medium text-ink">{topic.name}</div>
-                  <div className="text-sm text-dusk/50">
-                    {topic.exerciseCount} упражнений
+            {topics.map((topic) => {
+              const isActive = activeTopicId === topic.id;
+              const count = topicCounts[topic.id] ?? 0;
+              return (
+                <div
+                  key={topic.id}
+                  className={`card flex items-center justify-between py-4 cursor-pointer transition-all ${
+                    isActive
+                      ? 'border-2 border-ember bg-ember/5'
+                      : 'border-2 border-transparent hover:bg-dusk/5'
+                  }`}
+                  onClick={() => handleSelectTopic(topic.id)}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {/* Индикатор активной темы */}
+                    <div
+                      className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                        isActive ? 'bg-ember' : 'bg-dusk/20'
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <div className="font-medium text-ink truncate">{topic.name}</div>
+                      <div className="text-sm text-dusk/50">
+                        {count === 0
+                          ? 'нет упражнений'
+                          : `${count} ${count === 1 ? 'упражнение' : count < 5 ? 'упражнения' : 'упражнений'}`}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {isActive && (
+                      <span className="badge bg-ember/20 text-ember text-xs">активна</span>
+                    )}
+                    {topic.isBuiltIn && <div className="badge">встроенная</div>}
+                    {!topic.isBuiltIn && topics.length > 1 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Удалить тему «${topic.name}» и все связанные упражнения?`)) {
+                            handleDeleteTopic(topic.id);
+                          }
+                        }}
+                        className="w-8 h-8 rounded-full hover:bg-ember/10 flex items-center
+                          justify-center transition-colors text-dusk/40 hover:text-ember text-sm"
+                        title="Удалить тему"
+                      >
+                        ×
+                      </button>
+                    )}
                   </div>
                 </div>
-                {topic.isBuiltIn && <div className="badge">встроенная</div>}
-              </div>
-            ))}
+              );
+            })}
           </div>
+        )}
+
+        {/* Подсказка */}
+        {topics.length > 0 && (
+          <p className="text-xs text-dusk/40 mt-2">
+            Нажмите на тему, чтобы сделать её активной для генерации упражнений
+          </p>
         )}
       </section>
 

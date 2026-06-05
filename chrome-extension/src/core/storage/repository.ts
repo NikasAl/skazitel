@@ -87,6 +87,25 @@ export async function getExercisesByTopic(topicId: string): Promise<Exercise[]> 
   return db.exercises.where('topicId').equals(topicId).toArray();
 }
 
+/** Получить количество упражнений по теме (точный подсчёт из БД) */
+export async function getExerciseCountByTopic(topicId: string): Promise<number> {
+  return db.exercises.where('topicId').equals(topicId).count();
+}
+
+/** Обновить активную тему в настройках */
+export async function setActiveTopicId(topicId: string | undefined): Promise<void> {
+  const { getSettings, saveSettings } = await import('./settings');
+  const settings = await getSettings();
+  await saveSettings({ ...settings, activeTopicId: topicId });
+}
+
+/** Получить идентификатор активной темы */
+export async function getActiveTopicId(): Promise<string | undefined> {
+  const { getSettings } = await import('./settings');
+  const settings = await getSettings();
+  return settings.activeTopicId;
+}
+
 /** Получить все упражнения (сначала свежие) */
 export async function getAllExercises(): Promise<Exercise[]> {
   return db.exercises.orderBy('createdAt').reverse().toArray();

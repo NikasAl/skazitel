@@ -206,6 +206,7 @@ export interface AppSettings {
   dailyGoal: number;
   isOnboarded: boolean;
   exportFormat: 'json';
+  activeTopicId?: string;
 }
 
 export interface ApiProviderConfig {

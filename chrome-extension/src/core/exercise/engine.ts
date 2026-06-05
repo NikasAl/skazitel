@@ -11,7 +11,7 @@ import type { Exercise, ExerciseType, ExerciseReview, ExerciseConstraint, DrillD
 import { llmRouter } from '../../llm/router';
 import { getSettings } from '../storage/settings';
 import { getSystemPrompt, getGeneratePrompt, getReviewPrompt, parseLLMJson } from './prompts';
-import { addExercise, getProfile, updateProfile, addAttempt } from '../storage/repository';
+import { addExercise, getProfile, updateProfile, addAttempt, incrementTopicExerciseCount } from '../storage/repository';
 import { LEVEL_XP_TABLE } from '../types';
 
 // ==================== Типы для JSON-ответов LLM ====================
@@ -530,10 +530,20 @@ class ExerciseEngineClass {
     if (!apiConfig) {
       const drillBuiltin = BUILTIN_DRILLS.find(e => e.type === type);
       if (drillBuiltin) {
-        return { exercise: { ...drillBuiltin, id: crypto.randomUUID(), topicId }, usedBuiltin: true };
+        const ex = { ...drillBuiltin, id: crypto.randomUUID(), topicId };
+        await addExercise(ex);
+        if (topicId && topicId !== 'no-topic') {
+          await incrementTopicExerciseCount(topicId).catch(() => {});
+        }
+        return { exercise: ex, usedBuiltin: true };
       }
       const builtin = BUILTIN_EXERCISES.find(e => e.type === type) ?? BUILTIN_EXERCISES[0];
-      return { exercise: { ...builtin, id: crypto.randomUUID(), topicId }, usedBuiltin: true };
+      const ex = { ...builtin, id: crypto.randomUUID(), topicId };
+      await addExercise(ex);
+      if (topicId && topicId !== 'no-topic') {
+        await incrementTopicExerciseCount(topicId).catch(() => {});
+      }
+      return { exercise: ex, usedBuiltin: true };
     }
 
     // Дрели с API — генерируются через LLM ниже (фоллбэк на встроенные при ошибке)
@@ -627,14 +637,23 @@ class ExerciseEngineClass {
 
       // Сохраняем упражнение в БД
       await addExercise(exercise);
+      // Обновляем счётчик упражнений в теме
+      if (topicId && topicId !== 'no-topic') {
+        await incrementTopicExerciseCount(topicId).catch(() => {});
+      }
 
       return { exercise, usedBuiltin: false };
     } catch (error) {
       console.error('[Skazitel:engine] ❌ Ошибка генерации упражнения:', error);
       console.error('[Skazitel:engine] стек:', error instanceof Error ? error.stack : 'n/a');
-      // Фоллбэк на встроенное
+      // Фоллбэк на встроенное (сохраняем в БД для учёта в статистике темы)
       const fallback = BUILTIN_DRILLS.find(e => e.type === type) ?? BUILTIN_EXERCISES.find(e => e.type === type) ?? BUILTIN_EXERCISES[0];
-      return { exercise: { ...fallback, id: crypto.randomUUID(), topicId }, usedBuiltin: true };
+      const ex = { ...fallback, id: crypto.randomUUID(), topicId };
+      await addExercise(ex).catch(() => {});
+      if (topicId && topicId !== 'no-topic') {
+        await incrementTopicExerciseCount(topicId).catch(() => {});
+      }
+      return { exercise: ex, usedBuiltin: true };
     }
   }
 

@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import type { Exercise, ExerciseType } from '../core/types';
 import { EXERCISE_TYPE_INFO, EXERCISE_TYPES } from '../core/types';
 import { exerciseEngine } from '../core/exercise/engine';
-import { getTopics, getProfile } from '../core/storage/repository';
+import { getTopics, getProfile, getActiveTopicId } from '../core/storage/repository';
 
 // Типы упражнений-дрелей (с выбором из вариантов)
 const DRILL_TYPES: ExerciseType[] = ['syllable_count', 'stress_pattern', 'rhyme_match', 'line_builder'];
@@ -308,8 +308,12 @@ export default function ExerciseScreen() {
     setSelectedType(type);
 
     try {
-      const topics = await getTopics();
-      const topic = topics[0];
+      const [topics, activeId] = await Promise.all([
+        getTopics(),
+        getActiveTopicId(),
+      ]);
+      // Используем активную тему, либо первую в списке
+      const topic = activeId ? topics.find((t) => t.id === activeId) : topics[0];
       const topicId = topic?.id ?? 'no-topic';
       const topicName = topic?.name ?? 'свободная тема';
 
