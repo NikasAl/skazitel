@@ -122,6 +122,11 @@ export async function deleteExercise(id: string): Promise<void> {
   await db.exercises.delete(id);
 }
 
+/** Удалить попытку */
+export async function deleteAttempt(id: string): Promise<void> {
+  await db.attempts.delete(id);
+}
+
 /** Обновить упражнение */
 export async function updateExercise(id: string, updates: Partial<Exercise>): Promise<void> {
   await db.exercises.update(id, updates);

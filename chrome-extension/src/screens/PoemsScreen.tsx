@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../core/storage/db';
+import { deletePoem, deleteAttempt } from '../core/storage/repository';
 import type { Poem, ExerciseAttempt, Exercise, ExerciseType } from '../core/types';
 import { EXERCISE_TYPE_INFO } from '../core/types';
 
@@ -27,25 +28,38 @@ export default function PoemsScreen() {
   const [poems, setPoems] = useState<Poem[]>([]);
   const [attempts, setAttempts] = useState<ExerciseAttempt[]>([]);
   const [exercises, setExercises] = useState<Record<string, Exercise>>({});
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  useEffect(() => {
-    Promise.all([
+  const loadData = useCallback(async () => {
+    const [p, a] = await Promise.all([
       db.poems.orderBy('createdAt').reverse().toArray(),
       db.attempts.orderBy('submittedAt').reverse().toArray(),
-    ]).then(([p, a]) => {
-      setPoems(p);
-      setAttempts(a);
-      // Загружаем упражнения для получения типа
-      const ids = [...new Set(a.map((at) => at.exerciseId))];
-      Promise.all(ids.map((id) => db.exercises.get(id))).then((exs) => {
-        const map: Record<string, Exercise> = {};
-        for (const ex of exs) {
-          if (ex) map[ex.id] = ex;
-        }
-        setExercises(map);
-      });
-    });
+    ]);
+    setPoems(p);
+    setAttempts(a);
+    // Загружаем упражнения для получения типа
+    const ids = [...new Set(a.map((at) => at.exerciseId))];
+    const exs = await Promise.all(ids.map((id) => db.exercises.get(id)));
+    const map: Record<string, Exercise> = {};
+    for (const ex of exs) {
+      if (ex) map[ex.id] = ex;
+    }
+    setExercises(map);
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleDelete = async (entry: PoemEntry) => {
+    if (entry.source === 'poem') {
+      await deletePoem(entry.id);
+    } else {
+      await deleteAttempt(entry.id);
+    }
+    setConfirmDeleteId(null);
+    await loadData();
+  };
 
   // Объединяем стихи из таблицы poems и из творческих попыток
   const entries = useMemo(() => {
@@ -113,7 +127,7 @@ export default function PoemsScreen() {
       ) : (
         <div className="space-y-4">
           {entries.map((entry) => (
-            <div key={entry.id} className="card">
+            <div key={entry.id} className="card group relative">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-medium text-ink">{entry.title}</h3>
                 <div className="flex items-center gap-2">
@@ -126,6 +140,34 @@ export default function PoemsScreen() {
                     }`}>
                       {entry.score}/100
                     </span>
+                  )}
+                  {/* Кнопка удаления */}
+                  {confirmDeleteId === entry.id ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-ember">Удалить?</span>
+                      <button
+                        onClick={() => handleDelete(entry)}
+                        className="text-xs px-2 py-0.5 rounded bg-ember text-parchment hover:bg-ember/80 transition-colors"
+                      >
+                        Да
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="text-xs px-2 py-0.5 rounded bg-dusk/20 text-dusk hover:bg-dusk/30 transition-colors"
+                      >
+                        Нет
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(entry.id)}
+                      className="w-7 h-7 rounded-full opacity-0 group-hover:opacity-100
+                        hover:bg-ember/10 flex items-center justify-center
+                        transition-all text-dusk/40 hover:text-ember text-sm"
+                      title="Удалить"
+                    >
+                      ×
+                    </button>
                   )}
                 </div>
               </div>
