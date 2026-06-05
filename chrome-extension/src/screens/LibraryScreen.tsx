@@ -285,7 +285,7 @@ export default function LibraryScreen() {
                         <p className="text-sm text-dusk/80 font-serif leading-relaxed whitespace-pre-wrap">
                           {exercise.instruction}
                         </p>
-                        {exercise.successCriteria.length > 0 && (
+                        {exercise.successCriteria && Array.isArray(exercise.successCriteria) && exercise.successCriteria.length > 0 && (
                           <div className="mt-2 pt-2 border-t border-dusk/10">
                             <p className="text-xs text-dusk/40 mb-1">Критерии успеха:</p>
                             <ul className="text-xs text-dusk/50 space-y-0.5">
