@@ -11,8 +11,8 @@ import type { Exercise, ExerciseType, ExerciseReview, ExerciseConstraint, DrillD
 import { llmRouter } from '../../llm/router';
 import { getSettings } from '../storage/settings';
 import { getSystemPrompt, getGeneratePrompt, getReviewPrompt, parseLLMJson } from './prompts';
-import { addExercise, getProfile, updateProfile, addAttempt, incrementTopicExerciseCount } from '../storage/repository';
-import { LEVEL_XP_TABLE } from '../types';
+import { addExercise, getProfile, updateProfile, addAttempt, incrementTopicExerciseCount, addPoem } from '../storage/repository';
+import { LEVEL_XP_TABLE, EXERCISE_TYPE_INFO } from '../types';
 
 // ==================== Типы для JSON-ответов LLM ====================
 
@@ -841,6 +841,28 @@ class ExerciseEngineClass {
       review,
       isCreativeSession: false,
     });
+
+    // Если творческое упражнение — сохраняем текст как стих в библиотеку
+    if (!exercise.drillData && userResponse.trim()) {
+      const CREATIVE_TYPES: ExerciseType[] = [
+        'rhythm', 'rhyme', 'metaphor', 'constraint',
+        'deconstruction', 'phonetics', 'prose_to_poetry', 'anti_cliche',
+      ];
+      if (CREATIVE_TYPES.includes(exercise.type)) {
+        const exerciseTypeInfo = EXERCISE_TYPE_INFO[exercise.type];
+        try {
+          await addPoem({
+            title: exerciseTypeInfo.name,
+            content: userResponse.trim(),
+            topicId: exercise.topicId,
+            tags: [exercise.type],
+            isDraft: review.scores.overall < 40,
+          });
+        } catch (e) {
+          console.warn('[Skazitel:engine] не удалось сохранить стих из упражнения:', e);
+        }
+      }
+    }
 
     // Обновляем профиль
     if (profile) {
