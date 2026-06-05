@@ -190,6 +190,12 @@ export interface Poem {
   updatedAt: string;
   isDraft: boolean;
   analysis?: PoemAnalysis;
+  /** Контекст / вдохновение — опорный текст или описание (для черновиков из Писательства) */
+  context?: string;
+  /** Описание стиля — свободный текст (для черновиков из Писательства) */
+  style?: string;
+  /** Статус черновика: draft — в работе, finished — готово (для черновиков из Писательства) */
+  status?: 'draft' | 'finished';
 }
 
 export interface PoemAnalysis {

@@ -331,8 +331,16 @@ export default function HomeScreen() {
         )}
       </section>
 
+      {/* Кнопка писательства */}
+      <button
+        className="btn-secondary w-full text-base py-3 mb-8 border-2 border-dashed border-dusk/20 hover:border-ember/40 hover:text-ember transition-colors"
+        onClick={() => navigate('/writing')}
+      >
+        ✍️ Писательство — рабочий стол поэта
+      </button>
+
       {/* Навигация */}
-      <nav className="mt-8 flex gap-3">
+      <nav className="mt-0 flex gap-3">
         <button className="btn-secondary flex-1" onClick={() => navigate('/library')}>
           Библиотека
         </button>

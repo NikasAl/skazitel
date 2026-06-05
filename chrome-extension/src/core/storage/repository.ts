@@ -172,6 +172,12 @@ export async function getPoems(): Promise<Poem[]> {
   return db.poems.orderBy('createdAt').reverse().toArray();
 }
 
+/** Получить черновики из Писательства (poems с context или style) */
+export async function getDrafts(): Promise<Poem[]> {
+  const all = await db.poems.orderBy('updatedAt').reverse().toArray();
+  return all.filter(p => p.context || p.style);
+}
+
 /** Добавить новый стих (генерирует id, createdAt, updatedAt) */
 export async function addPoem(poem: Omit<Poem, 'id' | 'createdAt' | 'updatedAt'>): Promise<Poem> {
   const newPoem: Poem = {

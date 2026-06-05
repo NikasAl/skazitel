@@ -6,6 +6,7 @@ import HomeScreen from './screens/HomeScreen';
 import ExerciseScreen from './screens/ExerciseScreen';
 import ReviewScreen from './screens/ReviewScreen';
 import CreativeScreen from './screens/CreativeScreen';
+import WritingScreen from './screens/WritingScreen';
 import PoemsScreen from './screens/PoemsScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import LibraryScreen from './screens/LibraryScreen';
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/exercise" element={<ExerciseScreen />} />
         <Route path="/review" element={<ReviewScreen />} />
         <Route path="/creative" element={<CreativeScreen />} />
+        <Route path="/writing" element={<WritingScreen />} />
         <Route path="/poems" element={<PoemsScreen />} />
         <Route path="/settings" element={<SettingsScreen />} />
         <Route path="/library" element={<LibraryScreen />} />
