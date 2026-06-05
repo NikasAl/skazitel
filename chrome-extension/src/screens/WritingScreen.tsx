@@ -1,10 +1,11 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   getDrafts,
   addPoem,
   updatePoem,
   deletePoem,
+  getPoems,
 } from '../core/storage/repository';
 import { getSettings } from '../core/storage/settings';
 import { writingEngine, getCurrentStanza } from '../core/exercise/writingEngine';
@@ -18,11 +19,13 @@ function ResultPanel({
   result,
   onInsert,
   onReplace,
+  onSaveCritic,
   onClose,
 }: {
   result: WritingToolResult;
   onInsert: () => void;
   onReplace: () => void;
+  onSaveCritic: () => void;
   onClose: () => void;
 }) {
   // Форматируем markdown-подобный текст (жирное через **)
@@ -32,6 +35,7 @@ function ResultPanel({
 
   const canInsert = ['generate', 'rewrite_stanza', 'continue', 'resize'].includes(result.tool);
   const canReplace = ['rewrite_stanza', 'resize'].includes(result.tool);
+  const isCritic = result.tool === 'critic';
 
   return (
     <div className="card bg-ink/5 border border-ink/10 mt-4">
@@ -39,7 +43,7 @@ function ResultPanel({
         className="text-sm text-ink leading-relaxed prose-sm"
         dangerouslySetInnerHTML={{ __html: formatted }}
       />
-      <div className="flex gap-2 mt-3 pt-3 border-t border-ink/10">
+      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-ink/10">
         {canInsert && (
           <button onClick={onInsert} className="btn-primary text-xs px-3 py-1.5">
             Вставить
@@ -48,6 +52,11 @@ function ResultPanel({
         {canReplace && (
           <button onClick={onReplace} className="btn-secondary text-xs px-3 py-1.5">
             Заменить строфу
+          </button>
+        )}
+        {isCritic && (
+          <button onClick={onSaveCritic} className="btn-secondary text-xs px-3 py-1.5 border border-sage/30 text-sage">
+            Сохранить критику
           </button>
         )}
         <button onClick={onClose} className="btn-secondary text-xs px-3 py-1.5 ml-auto">
@@ -153,6 +162,7 @@ function WordModal({
 
 export default function WritingScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Состояние черновика
   const [title, setTitle] = useState('');
@@ -199,6 +209,39 @@ export default function WritingScreen() {
   useEffect(() => {
     loadDrafts();
   }, [loadDrafts]);
+
+  // Загрузка poem по ID (при переходе из PoemsScreen или из черновиков)
+  const loadPoemById = useCallback(async (id: string) => {
+    try {
+      // Ищем сначала в черновиках, потом во всех poem
+      const poems = await getPoems();
+      const poem = poems.find(p => p.id === id);
+      if (poem) {
+        setPoemId(poem.id);
+        setTitle(poem.title || '');
+        setContext(poem.context || '');
+        setStyle(poem.style || '');
+        setContent(poem.content || '');
+        setIsSaved(true);
+        // Показать сохранённую критику если есть
+        if (poem.criticReport) {
+          setResult({ tool: 'critic', text: poem.criticReport });
+        }
+      }
+    } catch (e) {
+      console.error('[WritingScreen] ошибка загрузки стиха:', e);
+    }
+  }, []);
+
+  // При первом рендере проверяем state от навигации
+  useEffect(() => {
+    const state = location.state as { poemId?: string } | null;
+    if (state?.poemId) {
+      loadPoemById(state.poemId);
+      // Очищаем state чтобы не перезагружать при обновлении
+      window.history.replaceState({}, '');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Отслеживаем курсор в textarea
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -250,7 +293,32 @@ export default function WritingScreen() {
     }
   };
 
-  // Загрузка черновика
+  /** Сохранить результат критика в poem */
+  const handleSaveCritic = async () => {
+    if (!result || !poemId) {
+      // Если poemId нет — сначала сохраняем черновик
+      if (!content.trim()) return;
+      await handleSave();
+      // После save poemId будет установлен
+      // Сохраняем критику в следующем тике
+      if (poemId && result) {
+        try {
+          await updatePoem(poemId, { criticReport: result.text });
+          setResult({ ...result, tool: result.tool }); // trigger re-render
+        } catch (e) {
+          console.error('[WritingScreen] ошибка сохранения критики:', e);
+        }
+      }
+      return;
+    }
+    try {
+      await updatePoem(poemId, { criticReport: result.text });
+    } catch (e) {
+      console.error('[WritingScreen] ошибка сохранения критики:', e);
+    }
+  };
+
+  // Загрузка черновика из списка
   const loadDraft = (draft: Poem) => {
     setPoemId(draft.id);
     setTitle(draft.title || '');
@@ -261,6 +329,10 @@ export default function WritingScreen() {
     setResult(null);
     setError(null);
     setIsSaved(true);
+    // Показать сохранённую критику если есть
+    if (draft.criticReport) {
+      setResult({ tool: 'critic', text: draft.criticReport });
+    }
   };
 
   // Новый черновик
@@ -501,6 +573,7 @@ export default function WritingScreen() {
                   <div className="font-medium text-ink text-sm truncate">{d.title || 'Без названия'}</div>
                   <div className="text-xs text-dusk/40 truncate">
                     {d.style && `Стиль: ${d.style}`}
+                    {d.criticReport && ' 🔍'}
                     {d.updatedAt && ` · ${new Date(d.updatedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}`}
                   </div>
                 </div>
@@ -654,6 +727,7 @@ export default function WritingScreen() {
           result={result}
           onInsert={handleInsertResult}
           onReplace={handleReplaceStanza}
+          onSaveCritic={handleSaveCritic}
           onClose={() => setResult(null)}
         />
       )}

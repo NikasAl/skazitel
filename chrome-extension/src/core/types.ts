@@ -196,6 +196,8 @@ export interface Poem {
   style?: string;
   /** Статус черновика: draft — в работе, finished — готово (для черновиков из Писательства) */
   status?: 'draft' | 'finished';
+  /** Отчёт критика — сохранённый результат анализа ИИ (для черновиков из Писательства) */
+  criticReport?: string;
 }
 
 export interface PoemAnalysis {

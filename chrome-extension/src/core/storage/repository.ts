@@ -172,10 +172,12 @@ export async function getPoems(): Promise<Poem[]> {
   return db.poems.orderBy('createdAt').reverse().toArray();
 }
 
-/** Получить черновики из Писательства (poems с context или style) */
+/** Получить черновики из Писательства (poems со status='draft') */
 export async function getDrafts(): Promise<Poem[]> {
-  const all = await db.poems.orderBy('updatedAt').reverse().toArray();
-  return all.filter(p => p.context || p.style);
+  const all = await db.poems.toArray();
+  return all
+    .filter(p => p.status === 'draft')
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
 /** Добавить новый стих (генерирует id, createdAt, updatedAt) */
