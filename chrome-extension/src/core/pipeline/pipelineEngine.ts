@@ -32,6 +32,11 @@ type ProgressCallback = (
   currentPoem?: string,
 ) => void;
 
+// ==================== Константы ====================
+
+/** Порог для прохождения метрической проверки (было 60, повышено) */
+const METER_PASS_THRESHOLD = 70;
+
 // ==================== PipelineEngine ====================
 
 class PipelineEngine {
@@ -138,15 +143,18 @@ class PipelineEngine {
   /**
    * Запустить Метриста: программная проверка размера и рифм.
    *
-   * Разбивает стихотворение на строфы, анализирует каждую строку на метрику
-   * и каждую пару рифм на точность.
+   * Проверяет:
+   * 1. Количество слогов в строке (tolerance ±1 от моды)
+   * 2. Рифмопары в каждой строфе (точные/богатые = pass, ассонанс/нет = fail)
+   *
+   * НЕ использует confidence из meterDetector (зависит от stressDetector,
+   * который несовершенен). Вместо этого считает только слоги и рифмы.
    */
   private runMetrist(poem: string, _targetMeter: string): MetristReport {
     const lines = poem.split('\n');
 
     // --- Разбиваем на строфы ---
     const stanzas: string[][] = [];
-    // Глобальный номер строки каждой строки в строфе (1-based)
     const stanzaGlobalLines: number[][] = [];
     let currentStanza: string[] = [];
     let currentGlobalLines: number[] = [];
@@ -162,7 +170,7 @@ class PipelineEngine {
         }
       } else {
         currentStanza.push(trimmed);
-        currentGlobalLines.push(i + 1); // 1-based line number
+        currentGlobalLines.push(i + 1);
       }
     }
     if (currentStanza.length > 0) {
@@ -170,7 +178,7 @@ class PipelineEngine {
       stanzaGlobalLines.push(currentGlobalLines);
     }
 
-    // --- Анализ каждой строки на метрику ---
+    // --- Анализ каждой строки на количество слогов ---
     const lineDetails: LineMeterDetail[] = [];
     const syllableCounts: number[] = [];
 
@@ -179,16 +187,15 @@ class PipelineEngine {
       if (!trimmed) continue;
 
       const analysis = analyzeLine(trimmed);
-      const ok = analysis.totalSyllables > 0 && (analysis.meter?.confidence ?? 0) >= 0.5;
 
       lineDetails.push({
         lineNumber: i + 1,
         text: trimmed.length > 60 ? trimmed.substring(0, 60) + '…' : trimmed,
         syllableCount: analysis.totalSyllables,
-        expectedSyllables: null, // будет заполнен после расчёта моды
+        expectedSyllables: null,
         meter: analysis.meter?.meter ?? 'не определён',
         confidence: analysis.meter?.confidence ?? 0,
-        ok,
+        ok: true, // будет перезаписано после расчёта моды
       });
 
       if (analysis.totalSyllables > 0) {
@@ -213,18 +220,21 @@ class PipelineEngine {
     }
 
     // Обновляем expectedSyllables и ok для каждой строки
+    // Проверяем ТОЛЬКО количество слогов (tolerance ±1)
+    // Confidence НЕ используем — он зависит от stressDetector
     const meterErrors: string[] = [];
     let meterOkCount = 0;
 
     for (const detail of lineDetails) {
       detail.expectedSyllables = expectedSyllables > 0 ? expectedSyllables : null;
+
       const isOk = expectedSyllables === 0
         || detail.syllableCount === expectedSyllables
         || Math.abs(detail.syllableCount - expectedSyllables) <= 1;
 
-      detail.ok = isOk && detail.confidence >= 0.5;
+      detail.ok = isOk;
 
-      if (!detail.ok) {
+      if (!isOk) {
         meterErrors.push(
           `Строка ${detail.lineNumber}: ${detail.syllableCount} слогов (ожидается ${expectedSyllables})`
         );
@@ -249,7 +259,6 @@ class PipelineEngine {
       const globalLines = stanzaGlobalLines[sIdx];
       if (stanzas[sIdx].length < 2) continue;
 
-      // Получаем пары индексов строк из схемы рифмовки
       const schemePairs = getSchemePairs(analysis.scheme, stanzas[sIdx].length);
 
       for (let pIdx = 0; pIdx < analysis.pairs.length; pIdx++) {
@@ -265,7 +274,6 @@ class PipelineEngine {
           rhymeOkCount++;
         }
 
-        // Определяем глобальные номера строк для этой пары
         let line1 = globalLines[0] ?? pIdx * 2 + 1;
         let line2 = globalLines[1] ?? pIdx * 2 + 2;
 
@@ -303,7 +311,7 @@ class PipelineEngine {
       lineDetails,
       rhymeDetails,
       overallScore: Math.round((meterScore + rhymeScore) / 2),
-      passed: meterScore >= 60 && rhymeScore >= 60,
+      passed: meterScore >= METER_PASS_THRESHOLD && rhymeScore >= METER_PASS_THRESHOLD,
     };
   }
 
@@ -323,6 +331,7 @@ class PipelineEngine {
     this.status = 'running';
 
     let currentPoem = '';
+    let lastMetristReport: MetristReport | undefined;
 
     try {
       // ===== Step 1: Conceptologist =====
@@ -346,7 +355,6 @@ class PipelineEngine {
       });
       this.updateStep(1, 'conceptologist', { status: 'completed' });
       const conceptsRaw = step1Result.content;
-      // Валидируем JSON-ответ Концептолога
       const conceptsParsed = parseLLMJson<Record<string, unknown>>(conceptsRaw);
       if (!conceptsParsed) {
         console.warn('[Pipeline:conceptologist] Не удалось распарсить JSON-ответ');
@@ -373,7 +381,6 @@ class PipelineEngine {
       });
       this.updateStep(2, 'formalist', { status: 'completed' });
       const formalDataRaw = step2Result.content;
-      // Валидируем JSON-ответ Формалиста
       const formalParsed = parseLLMJson<Record<string, unknown>>(formalDataRaw);
       if (!formalParsed) {
         console.warn('[Pipeline:formalist] Не удалось распарсить JSON-ответ');
@@ -413,6 +420,7 @@ class PipelineEngine {
         this.updateStep(4, 'metrist', { status: 'running', iteration });
         const step4Start = Date.now();
         const report = this.runMetrist(currentPoem, config.meter);
+        lastMetristReport = report;
 
         this.addLog({
           agent: 'metrist',
@@ -426,6 +434,7 @@ class PipelineEngine {
         });
         this.updateStep(4, 'metrist', { status: 'completed', iteration });
 
+        // Прерываем цикл если passed или достигли max итераций
         if (report.passed || iteration >= maxIter) {
           break;
         }
@@ -439,16 +448,21 @@ class PipelineEngine {
       this.updateStep(5, 'editor', { status: 'running' });
 
       const step5Start = Date.now();
+      // Передаём отчёт Метриста в Редактор!
+      const metristContext = lastMetristReport
+        ? `\n\nОТЧЁТ МЕТРИСТА (учти при редактировании):\n${this.formatMetristReport(lastMetristReport)}`
+        : '';
+
       const step5Result = await this.callLLM(
         Prompts.EDITOR_SYSTEM,
-        Prompts.editorPrompt(currentPoem, conceptsRaw),
+        Prompts.editorPrompt(currentPoem, conceptsRaw) + metristContext,
         'text',
       );
       this.addLog({
         agent: 'editor',
         stepNumber: 5,
         prompt: Prompts.EDITOR_SYSTEM,
-        input: Prompts.editorPrompt(currentPoem, conceptsRaw),
+        input: Prompts.editorPrompt(currentPoem, conceptsRaw) + metristContext,
         output: step5Result.content,
         durationMs: Date.now() - step5Start,
         tokens: step5Result.tokens,
@@ -548,20 +562,11 @@ class PipelineEngine {
 
 /**
  * Извлечь пары индексов строк из схемы рифмовки.
- *
- * Примеры:
- * - 'АБАБ' → [[0,2], [1,3]]
- * - 'ААББ' → [[0,1], [2,3]]
- * - 'АББА' → [[0,3], [1,2]]
- *
- * @param scheme — строка схемы ('АБАБ', 'ААББ', и т.д.)
- * @param lineCount — количество строк в строфе (для авто-схем)
  */
 function getSchemePairs(scheme: string, lineCount: number): [number, number][] {
   const pairs: [number, number][] = [];
   if (!scheme || lineCount < 2) return pairs;
 
-  // Группируем позиции по букве
   const letterPositions: Map<string, number[]> = new Map();
   for (let i = 0; i < scheme.length && i < lineCount; i++) {
     const letter = scheme[i];
@@ -571,7 +576,6 @@ function getSchemePairs(scheme: string, lineCount: number): [number, number][] {
     letterPositions.get(letter)!.push(i);
   }
 
-  // Формируем пары: для каждой буквы берём соседние позиции парами
   for (const positions of letterPositions.values()) {
     for (let i = 0; i + 1 < positions.length; i += 2) {
       pairs.push([positions[i], positions[i + 1]]);
