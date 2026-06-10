@@ -11,6 +11,7 @@ import PoemsScreen from './screens/PoemsScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import LibraryScreen from './screens/LibraryScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
+import PipelineScreen from './screens/PipelineScreen';
 
 export default function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="/poems" element={<PoemsScreen />} />
         <Route path="/settings" element={<SettingsScreen />} />
         <Route path="/library" element={<LibraryScreen />} />
+        <Route path="/pipeline" element={<PipelineScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

@@ -333,10 +333,18 @@ export default function HomeScreen() {
 
       {/* Кнопка писательства */}
       <button
-        className="btn-secondary w-full text-base py-3 mb-8 border-2 border-dashed border-dusk/20 hover:border-ember/40 hover:text-ember transition-colors"
+        className="btn-secondary w-full text-base py-3 mb-4 border-2 border-dashed border-dusk/20 hover:border-ember/40 hover:text-ember transition-colors"
         onClick={() => navigate('/writing')}
       >
         ✍️ Писательство — рабочий стол поэта
+      </button>
+
+      {/* Кнопка пайплайна */}
+      <button
+        className="btn-secondary w-full text-base py-3 mb-8 border-2 border-dashed border-gold/30 hover:border-gold/60 hover:text-gold transition-colors"
+        onClick={() => navigate('/pipeline')}
+      >
+        🔬 Поэтический Пайплайн — исследовательский инструмент
       </button>
 
       {/* Навигация */}
