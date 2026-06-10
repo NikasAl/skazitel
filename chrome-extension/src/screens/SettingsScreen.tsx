@@ -9,7 +9,11 @@ const PROVIDER_LABELS: Record<string, string> = {
   openrouter: 'OpenRouter',
   'z-ai': 'z-ai',
   gigachat: 'GigaChat',
+  local: 'Локальная модель',
 };
+
+/** Провайдеры, где поле «API-ключ» заменяется на «Базовый URL» */
+const URL_BASED_PROVIDERS = new Set(['local']);
 
 export default function SettingsScreen() {
   const navigate = useNavigate();
@@ -161,14 +165,18 @@ export default function SettingsScreen() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-dusk/70 mb-1">
-                API-ключ
+                {URL_BASED_PROVIDERS.has(selectedModel.split('/')[0])
+                  ? 'Базовый URL сервера'
+                  : 'API-ключ'}
               </label>
               <div className="relative">
                 <input
                   type={showKey ? 'text' : 'password'}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-or-... или другой ключ"
+                  placeholder={URL_BASED_PROVIDERS.has(selectedModel.split('/')[0])
+                    ? 'http://turbo:8080'
+                    : 'sk-or-... или другой ключ'}
                   className="input-field pr-10"
                 />
                 <button
@@ -179,6 +187,11 @@ export default function SettingsScreen() {
                   {showKey ? '🙈' : '👁️'}
                 </button>
               </div>
+              {URL_BASED_PROVIDERS.has(selectedModel.split('/')[0]) && (
+                <p className="text-xs text-dusk/40 mt-1">
+                  Адрес сервера с OpenAI-совместимым API (Ollama, LM Studio, llama.cpp, vLLM)
+                </p>
+              )}
             </div>
 
             <div>
