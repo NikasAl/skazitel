@@ -218,8 +218,8 @@ export interface AppSettings {
 }
 
 export interface ApiProviderConfig {
-  provider: 'openrouter' | 'z-ai' | 'gigachat';
-  apiKey: string;
+  provider: 'openrouter' | 'z-ai' | 'gigachat' | 'local';
+  apiKey: string;  // Для local: хранит базовый URL сервера
   model: string;
 }
 
@@ -365,6 +365,53 @@ export const EXERCISE_TYPE_INFO: Record<
     icon: '🧩',
   },
 };
+
+// ==================== Пайплайн ====================
+
+export interface PipelineConfig {
+  topic: string;
+  style: string;
+  meter: string;
+  stanzaCount: number;
+  provider: string;
+  maxIterations: number;
+}
+
+export interface PipelineRun {
+  id?: string;
+  createdAt: number;
+  config: PipelineConfig;
+  status: 'running' | 'paused' | 'completed' | 'error' | 'cancelled';
+  resultPoem?: string;
+  finalScore?: {
+    meterScore: number;
+    rhymeScore: number;
+    styleScore: number;
+  };
+}
+
+export interface PipelineStep {
+  id?: string;
+  runId: string;
+  stepNumber: number;
+  agentName: string;
+  agentLabel: string;
+  status: 'pending' | 'running' | 'completed' | 'skipped' | 'error' | 'edited';
+  prompt: string;
+  input: string;
+  output: string;
+  userEdit?: string;
+  tokens?: { prompt: number; completion: number };
+  durationMs: number;
+  iteration?: number;
+  metadata?: {
+    meterErrors: string[];
+    rhymeErrors: string[];
+    meterScore: number;
+    rhymeScore: number;
+  };
+  error?: string;
+}
 
 export const EXERCISE_TYPES: ExerciseType[] = [
   // Дрели — базовые навыки (рекомендуются начинающим)

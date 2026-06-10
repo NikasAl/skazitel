@@ -6,7 +6,8 @@
  * Пример:
  *  «openrouter/openai/gpt-4o» → OpenRouterProvider
  *  «z-ai/glm-4»              → ZAiProvider
- *  «gigachat/giga-2»          → GigaChatProvider
+ *  «gigachat/giga-2」          → GigaChatProvider
+ *  «local/gemma-4-26b」       → LocalProvider
  */
 
 import type { LLMRequest, LLMResponse, LLMModel } from '../core/types';
@@ -14,6 +15,7 @@ import type { LLMProvider } from './types';
 import { OpenRouterProvider } from './openrouter';
 import { ZAiProvider } from './zai';
 import { GigaChatProvider } from './gigachat';
+import { LocalProvider } from './local';
 
 class LLMRouter {
   /** Карта зарегистрированных провайдеров по идентификатору */
@@ -24,6 +26,7 @@ class LLMRouter {
       new OpenRouterProvider(),
       new ZAiProvider(),
       new GigaChatProvider(),
+      new LocalProvider(),
     ];
     this.providers = new Map(providers.map(p => [p.id, p]));
   }
