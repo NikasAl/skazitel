@@ -12,6 +12,17 @@ import {
 import type { UserProfile, Topic, ExerciseAttempt } from '../core/types';
 import { LEVEL_NAMES, LEVEL_XP_TABLE, EXERCISE_TYPE_INFO, EXERCISE_TYPES } from '../core/types';
 
+/** Склонение слова «день» для русского языка */
+function pluralizeDays(n: number): string {
+  const abs = Math.abs(n);
+  const lastTwo = abs % 100;
+  const lastOne = abs % 10;
+  if (lastTwo >= 11 && lastTwo <= 19) return `${n} дней`;
+  if (lastOne === 1) return `${n} день`;
+  if (lastOne >= 2 && lastOne <= 4) return `${n} дня`;
+  return `${n} дней`;
+}
+
 export default function HomeScreen() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -121,7 +132,9 @@ export default function HomeScreen() {
       <div className="grid grid-cols-2 gap-4 mb-8">
         <div className="card text-center">
           <div className="text-3xl font-bold text-ember">{profile?.streak ?? 0}</div>
-          <div className="text-sm text-dusk/60 mt-1">дней подряд</div>
+          <div className="text-sm text-dusk/60 mt-1">
+            {pluralizeDays(profile?.streak ?? 0)} подряд
+          </div>
           {profile && profile.streak >= 7 && (
             <div className="badge mt-2">+50% XP</div>
           )}

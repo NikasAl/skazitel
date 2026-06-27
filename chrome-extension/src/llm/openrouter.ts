@@ -63,7 +63,7 @@ export class OpenRouterProvider implements LLMProvider {
       model: modelId,
       messages,
       temperature: request.temperature ?? 0.7,
-      max_tokens: request.maxTokens ?? 2048,
+      max_tokens: request.maxTokens ?? 4096,
     };
 
     // Если запрошен JSON-формат ответа — добавляем response_format
